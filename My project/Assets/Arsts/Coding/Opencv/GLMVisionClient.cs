@@ -13,10 +13,6 @@ public class GLMVisionClient : MonoBehaviour
 {
     private const bool VisionFeaturesDisabled = true;
 
-    [Header("组件引用")]
-    [Tooltip("眼睛追踪控制器（用于获取摄像头帧）")]
-    [SerializeField] private EyesTrackingController eyesController;
-    
     [Header("视觉分析设置")]
     [Tooltip("是否启用自动分析")]
     [SerializeField] private bool autoAnalyze = false;
@@ -84,12 +80,6 @@ public class GLMVisionClient : MonoBehaviour
             settings.OnCredentialsChanged += OnCredentialsChanged;
         }
         
-        // 查找眼睛追踪控制器
-        if (eyesController == null)
-            eyesController = FindObjectOfType<EyesTrackingController>();
-        
-        if (eyesController == null && enableDebug)
-            Debug.LogWarning("GLMVisionClient: 未找到 EyesTrackingController，无法获取摄像头帧");
     }
     
     private void Awake()
@@ -159,29 +149,9 @@ public class GLMVisionClient : MonoBehaviour
             return;
         }
         
-        if (eyesController == null)
-        {
-            Debug.LogError("GLMVisionClient: EyesTrackingController 未找到");
-            return;
-        }
-        
-        if (!eyesController.IsInitialized())
-        {
-            if (enableDebug)
-                Debug.LogWarning("GLMVisionClient: 摄像头未初始化");
-            return;
-        }
-        
-        // 获取当前帧
-        Mat frame = eyesController.GetCurrentFrame();
-        if (frame == null || frame.empty())
-        {
-            if (enableDebug)
-                Debug.LogWarning("GLMVisionClient: 无法获取摄像头帧");
-            return;
-        }
-        
-        StartCoroutine(AnalyzeImageCoroutine(frame, customPrompt));
+        if (enableDebug)
+            Debug.LogWarning("GLMVisionClient: 未配置摄像头采集，请使用 AnalyzeImage() 传入图像");
+        OnVisionError?.Invoke("未配置摄像头采集");
     }
     
     /// <summary>

@@ -11,9 +11,6 @@ public class VisionExample : MonoBehaviour
     [Tooltip("GLM视觉客户端")]
     [SerializeField] private GLMVisionClient visionClient;
     
-    [Tooltip("眼睛追踪控制器")]
-    [SerializeField] private EyesTrackingController eyesController;
-    
     [Header("测试设置")]
     [Tooltip("按空格键触发视觉分析")]
     [SerializeField] private KeyCode triggerKey = KeyCode.Space;
@@ -26,9 +23,6 @@ public class VisionExample : MonoBehaviour
         // 自动查找组件
         if (visionClient == null)
             visionClient = FindObjectOfType<GLMVisionClient>();
-        
-        if (eyesController == null)
-            eyesController = FindObjectOfType<EyesTrackingController>();
         
         // 订阅视觉分析结果事件
         if (visionClient != null)

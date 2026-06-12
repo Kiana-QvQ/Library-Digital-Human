@@ -18,18 +18,10 @@
 - **功能**：调用 GLM-4.6V-Flash API 进行视觉分析
 - **位置**：`Coding/Opencv/GLMVisionClient.cs`
 - **主要方法**：
-  - `AnalyzeCurrentFrame(string customPrompt)`: 分析当前摄像头帧
   - `AnalyzeImage(Mat image, string customPrompt)`: 分析指定的图像
 - **事件**：
   - `OnVisionAnalysisReceived`: 收到视觉分析结果
   - `OnVisionError`: 视觉分析错误
-
-### 3. LookingEyes.cs (已修改)
-- **新增方法**：
-  - `GetCurrentFrame()`: 获取当前摄像头帧（供 VisionClient 使用）
-  - `IsInitialized()`: 检查摄像头是否已初始化
-
-## 使用步骤
 
 ### 步骤 1：配置组件
 
@@ -37,7 +29,6 @@
 2. 添加以下组件：
    - `GLMVisionSettings`
    - `GLMVisionClient`
-   - `EyesTrackingController`（如果还没有）
 
 ### 步骤 2：配置 API
 
@@ -47,20 +38,13 @@
    - `API Base Url`: `https://open.bigmodel.cn/api/paas/v4/chat/completions`
    - `Model`: `glm-4.6v-flash`
 
-### 步骤 3：连接组件
-
-1. 在 `GLMVisionClient` 组件中：
-   - 将 `Eyes Tracking Controller` 拖拽到 `Eyes Controller` 字段
-   - 或保持为空，组件会自动查找
-
-### 步骤 4：使用示例
+### 步骤 3：使用示例
 
 #### 方式 1：使用 VisionExample.cs
 
 1. 在场景中添加 `VisionExample` 组件
 2. 配置组件引用：
    - `Vision Client`: 拖拽 `GLMVisionClient` 组件
-   - `Eyes Controller`: 拖拽 `EyesTrackingController` 组件
 3. 运行场景，按 **空格键** 触发视觉分析
 
 #### 方式 2：代码调用
@@ -69,8 +53,8 @@
 // 获取视觉客户端
 GLMVisionClient visionClient = FindObjectOfType<GLMVisionClient>();
 
-// 分析当前帧
-visionClient.AnalyzeCurrentFrame("请描述这张图片");
+// 分析指定图像（Mat）
+visionClient.AnalyzeImage(imageMat, "请描述这张图片");
 
 // 订阅结果
 visionClient.OnVisionAnalysisReceived += (description) => {
@@ -170,13 +154,12 @@ visionClient.OnVisionAnalysisReceived += (description) => {
 1. **API Key 安全**：API Key 已硬编码在 `GLMVisionSettings.cs` 中，生产环境建议从配置文件或环境变量读取
 2. **图像压缩**：大图像会自动压缩以提高传输效率
 3. **网络请求**：确保网络连接正常，API 请求可能需要几秒钟
-4. **摄像头权限**：确保 Unity 已获得摄像头访问权限
+4. **图像来源**：需自行采集图像并调用 `AnalyzeImage()`；OpenCV 眼部追踪功能已移除
 
 ## 故障排除
 
-### 问题：无法获取摄像头帧
-- **解决**：检查 `EyesTrackingController` 是否已正确初始化
-- **检查**：在 Inspector 中查看 `EyesTrackingController` 的 `Is Initialized` 状态
+### 问题：无法获取图像
+- **解决**：使用 `AnalyzeImage(Mat)` 传入图像，或自行实现摄像头采集
 
 ### 问题：API 请求失败
 - **检查**：API Key 是否正确

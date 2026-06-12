@@ -7,13 +7,11 @@
 - 🎤 **多平台语音识别** - 支持讯飞、百度、Azure语音服务
 - 🤖 **AI对话集成** - 集成Coze平台AI对话功能
 - 🎭 **角色动画系统** - 唇形同步、眨眼控制、嘴型控制
-- 👁️ **视觉追踪** - OpenCV眼部追踪功能
 - 🔊 **实时语音交互** - 支持唤醒词检测和实时对话
 
 ## 技术栈
 - **Unity 2022.3+**
 - **C#**
-- **OpenCV for Unity**
 - **Oculus LipSync**
 - **多平台语音API** (讯飞、百度、Azure)
 - **Coze AI平台**
@@ -34,8 +32,6 @@ Assets/Arsts/Coding/
 │   └── Coze/         # Coze AI客户端
 ├── Main/             # 主控制模块
 │   └── VoiceControlManager.cs # 核心语音控制管理器
-└── Opencv/           # 视觉追踪模块
-    └── LookingEyes_Fixed.cs # 眼部追踪
 ```
 
 ## 安装说明
@@ -86,10 +82,6 @@ Assets/Arsts/Coding/
    - 确保角色模型有正确的BlendShape
    - 配置`Mouth shape.cs`中的BlendShape索引
 
-2. **眼部追踪**
-   - 配置OpenCV资源文件
-   - 设置摄像头权限
-
 ## 使用说明
 
 ### 基本功能
@@ -101,7 +93,6 @@ Assets/Arsts/Coding/
 ### 高级功能
 1. **实时对话** - 支持连续对话模式
 2. **唤醒词检测** - 使用"小美小美"等唤醒词激活系统
-3. **视觉追踪** - 根据用户面部位置调整角色视线
 
 ## 开发说明
 
