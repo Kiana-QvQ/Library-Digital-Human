@@ -1,0 +1,224 @@
+CozeAPI密钥：
+BiShe(2026-10-24)
+sat_Fhqa4V6AD482nzxlmQDimlJzBOe7Va9aRG3j5AXAQ7AZSyPGH1vfB23vp8ciGwxb
+
+我先看看你 Unity 项目里目前是怎样调用后端 / API 的，然后结合你已有的逻辑，给你一个“只更新 API key、不改大结构”的设计方案。
+
+[3 tools called]
+
+### 先帮你梳理一下现状
+
+从你项目里搜到的代码来看，你现在的 Coze 接入大致是这样一套结构（都在 Unity 端）：
+
+- **`CozeClient.cs`**：  
+  - 有序列化的 `apiKey`、`apiBaseUrl` 等字段，Inspector 里可以直接填。  
+  - 有 `UpdateAPIKey(string newAPIKey)` 用来在运行时更新 API Key。  
+  - 还有 `TestAPIKey(...)` 等测试函数。
+
+- **`SettingsData.cs` / `SettingsManager.cs`**：  
+  - `SettingsData` 里有 `cozeApiKey`、`cozeAgentId`、`cozeBaseUrl` 等字段。  
+  - `SettingsManager` 本来有一段把 `settings.network.cozeApiKey` 设置到 `CozeSettings` 的逻辑，但现在是注释掉的（`// cozeSettings.SetApiKey(...)`）。
+
+- **`APIManager.cs` / `CozeSettings` / `VoiceControlManager`**：  
+  - `APIManager` 里持有 `CozeSettings`，负责在启动时初始化。  
+  - `VoiceControlManager` 会从 `APIManager` 取 `CozeSettings`，再去配置 `CozeAgentClient`、TTS 等。
+
+也就是说：**目前真正发请求用的是 Unity 里的 CozeClient / CozeAgentClient，API key 要么在 Inspector 里手填，要么通过本地 Settings 注入**，还没有做到“从你自己的 `digital_human_backend` 拉取/下发 API key”。
+
+你现在的需求是：  
+> **后端 `digital_human_backend` 负责管理 Coze 的 API / 用户对话数据，Unity 端保持原有调用逻辑不大改，只是把“API key 更新”这件事交给后端推送/下发**，方便在 Coze 的 1 个月限制到期后换 key，而不用重新打包 Unity。
+
+---
+
+### 推荐的整体设计思路（保持现有逻辑，只是把 key 交给后端）
+
+核心思路：  
+- **Unity 不再“保存长期的 Coze API key”**，而是把它当作一种「短期配置」，每次启动时向你的 `digital_human_backend` 拉一次，或在需要时向后端要。  
+- **真正的 Coze API key 存在后端**，后端统一更新。  
+- Unity 侧只负责：  
+  1. 拿到后端给的一个 token/配置（可以是临时 Coze API key，也可以是后端自己的 proxy token）。  
+  2. 用现有的 `CozeClient.UpdateAPIKey(...)`、`CozeSettings` 等入口，把这个值写入到当前场景的 Coze 组件里。
+
+为了尽量不改你现有架构，推荐采用「最小侵入」改造：
+
+---
+
+### 1. 在后端 `digital_human_backend` 中设计一个简单的配置 API
+
+假设你后端已经有用户会话、对话收集等，这里只需增加一个小的配置接口即可，比如：
+
+- **GET `/api/config/coze`**（或 `/api/coze/config`）
+  - 返回 JSON，例如：
+
+    ```json
+    {
+      "cozeApiKey": "实际的_coze_key_或_后端生成的代理token",
+      "cozeAgentId": "你的 agent id",
+      "cozeBaseUrl": "https://api.coze.cn/v3/chat"
+    }
+    ```
+
+- **安全性建议**：  
+  - 如果你不希望 Unity 拿到真正的 Coze API key，可以改成后端自己调用 Coze，把 Unity 发来的消息转发出去（即 Unity 只拿到一个你自定义的 `backendToken`），不过这就会改比较多调用逻辑。  
+  - 你现在重点是“更换 key 不重发包”，所以可以先接受 Unity 直接拿到 Coze key，只要后端接口本身有基础鉴权（比如简单的 AppId + Secret、或按设备 ID 做白名单）。
+
+---
+
+### 2. 在 Unity 里增加一个专门负责“向后端取 Coze 配置”的脚本
+
+尽量不动现有 `CozeClient` 和场景结构，只是**加一个“桥接器”脚本**，流程：
+
+- **脚本职责**：
+  1. 游戏启动 / 进入 `SceneMenu` / `SceneChat` 时，向 `digital_human_backend` 请求 `/api/config/coze`。  
+  2. 拿到返回的 `cozeApiKey`、`cozeAgentId`、`cozeBaseUrl`。  
+  3. 找到场景里的 `CozeClient` 或 `CozeAgentClient` / `CozeSettings` 对象，调用现有的 `UpdateAPIKey` 或 `SetApiKey` 等接口，完成注入。
+
+- **放置位置**：
+  - 可以做成一个 `CozeConfigBootstrap` 脚本，挂在 `SceneMenu` 和 `SceneChat` 的某个全局 GameObject 上（比如 `APIManager` 同级）。  
+  - 这个脚本只跑一次并配置好之后，后续所有对话流程继续使用你已经写好的 `VoiceControlManager`、`CozeAgentClient`、`CozeStreamTTS` 等逻辑。
+
+- **伪代码结构示例**（只做说明，不会直接改你项目）：
+
+  ```csharp
+  public class CozeConfigBootstrap : MonoBehaviour
+  {
+      [SerializeField] private string backendConfigUrl; // eg. "https://your-backend/api/config/coze"
+
+      private IEnumerator Start()
+      {
+          // 1. 调后端获取配置
+          using (UnityWebRequest www = UnityWebRequest.Get(backendConfigUrl))
+          {
+              yield return www.SendWebRequest();
+
+              if (www.result != UnityWebRequest.Result.Success)
+              {
+                  Debug.LogError($"获取 Coze 配置失败: {www.error}");
+                  yield break;
+              }
+
+              // 2. 解析 JSON（可以用 JsonUtility 或第三方 JSON 库）
+              var json = www.downloadHandler.text;
+              var config = JsonUtility.FromJson<CozeConfigDto>(json);
+
+              // 3. 找到当前场景的 CozeClient / CozeSettings，并更新 API key
+              var cozeClient = FindObjectOfType<CozeClient>();
+              if (cozeClient != null)
+              {
+                  cozeClient.UpdateAPIKey(config.cozeApiKey);
+                  // 如果有 BaseUrl / AgentId 的 setter，也在这里一起配置
+              }
+
+              var cozeSettings = FindObjectOfType<CozeSettings>();
+              if (cozeSettings != null)
+              {
+                  // 如果 CozeSettings 有 SetApiKey / Initialize 等方法，可以在这里一起调用
+              }
+          }
+      }
+  }
+
+  [Serializable]
+  public class CozeConfigDto
+  {
+      public string cozeApiKey;
+      public string cozeAgentId;
+      public string cozeBaseUrl;
+  }
+  ```
+
+  这样你**原来的对话流程完全不用改**，只是 `apiKey` 的来源从「Inspector 或本地 Settings」变成了「后端接口返回」。
+
+---
+
+### 3. 与现有 `SettingsData` / `SettingsManager` / `CozeSettings` 的衔接
+
+你项目里已经有一套设置系统：
+
+- `SettingsData` 里有 `cozeApiKey` 字段。  
+- `SettingsManager` 在 `ApplySettingsToCoze()` 里本来打算把 `settings.network.cozeApiKey` 设置到 `CozeSettings`，但目前是注释掉的。
+
+有两种做法，保持“尽量少改逻辑”的前提下，你可以选其一：
+
+- **做法 A：把后端返回的 key 写进 Settings，然后复用现在的初始化通路**  
+  1. `CozeConfigBootstrap` 从后端拿到 `cozeApiKey`。  
+  2. 拿到当前的 `SettingsManager` 或 `SettingsData` 实例，把 `settings.network.cozeApiKey = 后端返回的值`。  
+  3. 调用 `SettingsManager` 里现成的 `ApplySettingsToCoze()`，让它按原路径去配置 `CozeSettings` / `CozeClient`。  
+  4. 这样 UI、设置面板如果以后要显示当前 key，也可以直接从 Settings 读。
+
+- **做法 B：不碰 Settings，只直接改 CozeClient / CozeSettings**  
+  - 如果你 Settings 只是做持久化，而真正用 key 的地方集中在 `CozeClient`，可以跳过 Settings，直接在 `CozeConfigBootstrap` 里：  
+    - `FindObjectOfType<CozeClient>().UpdateAPIKey(...)`  
+    - 或者调用你已有的 `CozeSettings.SetApiKey(...)`，再让 `APIManager` 的 `Initialize()` 去分发。
+
+**建议**：如果你后面还想在设置界面里改 key、调试不同 key，选做法 A 会更统一；如果目前不需要让用户自己改 key，直接选做法 B 更简单。
+
+---
+
+### 4. 场景级使用（`SceneMenu` 和 `SceneChat`）
+
+你提到这两个场景：
+
+- `SceneMenu.unity`：一般是主菜单 / 设置 / 场景入口。  
+- `SceneChat.unity`：实际跟数字人对话的场景。
+
+一个比较稳妥的方案：
+
+- **在 `SceneMenu`**：  
+  - 挂一个 `CozeConfigBootstrap`，在玩家一进菜单时就去后端拿配置，并初始化。  
+  - 如果你在菜单里有“开始聊天”“进入数字人场景”的按钮，可以在请求成功后再开放这些按钮（避免 key 未就绪时进入）。
+
+- **在 `SceneChat`**：  
+  - 也可以再挂一个 `CozeConfigBootstrap`，在直接从编辑器启动 `SceneChat` 时也能正常拉配置。  
+  - 同时，这样即便玩家在运行时使用设置界面刷新了 key，你也可以设计一个“重新拉取配置”的按钮，让这个 bootstrap 再跑一次。
+
+---
+
+### 5. API key 过期 / 轮换时的流程
+
+Coze 的 key 每 1 个月需要更新，你现在的目标是：
+
+- **只改后端配置，不重新打 Unity 包**。
+
+配合上面的结构，可以这样操作：
+
+- **每次你在 Coze 后台换了新 key**：
+  1. 修改 `digital_human_backend` 的配置（例如 `.env` / 数据库 / 管理后台），更新 Coze 的 API key。  
+  2. `GET /api/config/coze` 返回的 `cozeApiKey` 自动变成新值。  
+  3. Unity 端用户下次打开游戏或切回 Chat 场景时，会再次请求后端，把新的 key 注入进来。
+
+- 如果你希望**在游戏运行中的长会话也自动更新**，可以考虑：
+  - 在 `CozeConfigBootstrap` 里加一个**定时刷新**（比如每隔 30 分钟向后端再拉一次配置，如果 key 变了就调用 `UpdateAPIKey`）。  
+  - 或者后端提供一个简单的版本号 / 时间戳字段，Unity 端定时拉取，只在版本号变化时才重新更新 key。
+
+---
+
+### 6. 和“用户对话数据收集”的关系
+
+你提到 `digital_human_backend` 还负责“用户对话数据收集”。这里有两种集成模式：
+
+- **模式 1：Unity 直接调用 Coze，额外把对话数据发给你后端**（最接近你现在逻辑）  
+  - `CozeClient` 直接把消息发到 Coze；  
+  - 同时，`VoiceControlManager` 或其他地方在每轮对话结束后，把用户提问、Coze 回复等结构化数据再 POST 一份到后端（比如 `/api/chat/logs`）。  
+  - 对 key 的管理就是上面说的 `/api/config/coze`。
+
+- **模式 2：Unity 所有对话只发给后端，由后端再转发 Coze**  
+  - 那么 Unity 不再直接使用 Coze API key，只拿一个 `backendToken`；  
+  - 这就会动到你 `CozeClient` 的 HTTP 请求目标（变成 `digital_human_backend` 地址），改动较大。  
+  - 优点是 key 完全不出服务器，更安全，权限管理容易；  
+  - 缺点是你要在后端完全复刻 `CozeClient` 当前的请求和流式逻辑。
+
+**你当前想“尽量保留现在的逻辑”，更适合模式 1**：  
+- “发请求”的路径不变，只是“拿 key 的地方”从本地/Inspector 改成后端。
+
+---
+
+### 7. 总结成一句话的方案
+
+- **在后端新增一个 `GET /api/config/coze` 接口统一返回 Coze API 配置**；  
+- **在 Unity 的 `SceneMenu` / `SceneChat` 中新增一个小的 `CozeConfigBootstrap` 脚本**：启动时向后端取配置，然后用现有的 `CozeClient.UpdateAPIKey` / `CozeSettings` 等方法把 Key 注入进去；  
+- 这样当 Coze 的 key 过期时，只需要在 `digital_human_backend` 里更新配置，Unity 不用重新打包，原有聊天逻辑也不用重写。
+
+---
+
+如果你愿意，可以把 `CozeClient.cs` 和 `APIManager.cs`、`SettingsManager.cs` 相关部分的代码贴一小段出来，我可以按照你现在的结构，给你写一个**更贴你项目实际结构的“桥接脚本”示例**（包括放在哪个 GameObject 上、在 `SceneMenu` / `SceneChat` 里大概怎么挂）。

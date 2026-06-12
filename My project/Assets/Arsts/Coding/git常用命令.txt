@@ -1,0 +1,3 @@
+# 添加单个文件到暂存区git add path/to/file.txt
+# 提交该文件 git commit -m "更新file.txt"
+# 推送命令git push origin main

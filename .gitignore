@@ -1,0 +1,85 @@
+# ========== OS / IDE ==========
+.DS_Store
+Thumbs.db
+.vs/
+.idea/
+*.swp
+*~
+
+# ========== Secrets ==========
+.env
+.env.local
+*.pem
+*.key
+
+# ========== Logs & local data ==========
+logs/
+data/
+*.log
+
+# ========== Unity (My project) ==========
+My project/[Ll]ibrary/
+My project/[Tt]emp/
+My project/[Oo]bj/
+My project/[Bb]uild/
+My project/[Bb]uilds/
+My project/[Ll]ogs/
+My project/[Uu]ser[Ss]ettings/
+My project/[Mm]emoryCaptures/
+My project/SceneBackups/
+
+# Unity build output
+UnityOutput/
+
+# Unity generated
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+sysinfo.txt
+UpgradeLog.htm
+
+# ========== Large binaries (do not push) ==========
+*.unitypackage
+*.zip
+*.7z
+*.rar
+*.apk
+*.aab
+*.mp4
+*.mov
+*.bc
+
+# OpenCV: optional platforms & extra package (keep Windows x86_64 for editor)
+My project/Assets/Plugins/OpenCVForUnity/Extra.unitypackage
+My project/Assets/Plugins/OpenCVForUnity/Plugins/Android/
+My project/Assets/Plugins/OpenCVForUnity/Plugins/iOS/
+My project/Assets/Plugins/OpenCVForUnity/Plugins/WebGL/
+My project/Assets/Plugins/OpenCVForUnity/Plugins/WSA/
+My project/Assets/Plugins/OpenCVForUnity/Plugins/macOS/
+My project/Assets/Plugins/OpenCVForUnity/Plugins/Linux/
+
+# ========== Python backend ==========
+digital_human_backend/.env
+digital_human_backend/data/
+digital_human_backend/**/__pycache__/
+digital_human_backend/**/*.pyc
+digital_human_backend/.venv/
+digital_human_backend/venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# ========== Embedding / vector cache ==========
+Embedding/**/__pycache__/
+**/chromadb/
+**/.chroma/

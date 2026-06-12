@@ -1,0 +1,43 @@
+Color & Normals/Alpha Options/Alpha to Coverage + Dithering;20fe9326685ce2e4787269cb01f0cfc5
+Color & Normals/Alpha Options/Center Fade;1755235276d939e4994d753f3a4cceaa
+Color & Normals/Alpha Options/Fade Close;793eecc3f0108b843a2a5b49a8b04da2
+Color & Normals/Alpha Options/Fade Far;5ad764170e310e344ba413821705cf26
+Color & Normals/Back Face/Back Face Glow;2958f8a8e737d764fa3053b8a908583f
+Color & Normals/Color Adjust/Continuous Hue Shift;2d02551e3ee1c014f9ba8caa2c0527c2
+Examples/Early Outline/Sunglasses;cfeeaf9db87553248a48917f3fefd5db
+Rendering/Blending/2x Multiplicative;bbafed2ea1ec1bb4284710b30594f8b0
+Rendering/Blending/Additive;08c12288ca461784994a7eeb2d504a93
+Rendering/Blending/Multiplicative;bb0ac8b9d5f85da49be4dc7de615d3e2
+Rendering/Blending/Premultiplied;1e66cd70f9b71c94baf4bf7bf33ce63f
+Rendering/Blending/Soft Additive;29dab888ff04bd64d89f0184c87fe5b9
+Rendering/Blending/Traditional Fade;66405e5ea49b3324a8814a65701e3ce8
+Rendering/Double Sided;7f0c9b196599c934aa53bff960801b49
+Rendering/Reduce Clip Distance;7835a12f95313ef409b7c59e9e3c7a57
+Rendering/RenderTargetsAlphaFix;c391d5bfaf9a1614aab7be1a1a8eadfd
+Shading/Clear Coat/Shiny;f20e890f83c487e488a22f20cd017bc6
+Shading/Cubemap/Skybox;f7d58c463797446448f37dca4e23b418
+Shading/Environmental Rim/Basic Rim;24aef2d05a63e014ea19ac1f8c65c466
+Shading/Shading/Cloth;80eb56b08f2cecb4fb060410d498d3cb
+Lighting/Full UTS2;615136f579afa484e9e658099d05d92d
+Lighting/Toon Hard Shadow;2638c151f1bc2b545bdd902d8cb4e8ea
+Lighting/Realistic;5abb2901aaf284e49870c3a12035b6b1
+Shading/Shading/Shade Maps;0bf364bc9f2f46f4baa8e773ad9f55d0
+Shading/Shading/lil Toon;7158c449cac535040b110c77d0126d82
+Lighting/Maximum Add intensity of 1;6486638649d3fc54bacd088e26145d79
+Lighting/Maximum Add intensity Infinite;640382bc7a5b50443b703d08e1c04aa6
+Lighting/UTS Style Additve;a27b6e9eff3294346b84df579e472c0f
+LilToon Shading Preset;60e33d8d69a9716459fc5b18af7d0e0c
+Shading/Reflections & Specular/Dull Metal;c0aa5fe13f6922f4dad78a7baf436d5a
+Shading/Reflections & Specular/Dull Non Metal;fe4b769d142711b4ea82013c2cb4f9b8
+Shading/Reflections & Specular/Shiny Metal;4a9066abf85c47a45baaa733a426daab
+Shading/Reflections & Specular/Shiny Non Metal;fa3303e6f34b69e4b8ec62032b11a40e
+Shading/Stylized Specular/Simple Two Layer;201105aad78eb7547b18bbf2b1ee41fd
+SpecialFX/DepthFX/Color Near Object;c56472bba77f8b14983faa980acb5eb4
+SpecialFX/DepthFX/Fade Near Object;43a9f89042541d34bb9b53f8b1fdae84
+SpecialFX/Dissolve/To Invisible;4f0675e076d799e4ab98323b196ba16a
+SpecialFX/Emission/RainbowStars;c738aa5a016853c47a74d3fa0aedc0e4
+SpecialFX/Glitter/GlitterStars;b3f1f2e987bdc25478029787f2546540
+SpecialFX/Iridescence/Basic Replace;665bd65bb06eb5d449b1e3395b652aa8
+SpecialFX/Mirror/Hide In Mirror;4b5f76d881989bb498f2d36af06df451
+SpecialFX/Pathing/Maze;07d53b2450f1e8c43b4d3677293cb77a
+SpecialFX/Stats Overlay/FPS Counter;94cac89e8b4baca4fa0e536366bc1725

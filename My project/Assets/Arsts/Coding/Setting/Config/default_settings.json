@@ -1,0 +1,95 @@
+{
+  "game": {
+    "language": "zh-CN",
+    "theme": 0,
+    "quality": 2,
+    "autoSave": true,
+    "autoSaveInterval": 300.0,
+    "debugMode": false
+  },
+  "audio": {
+    "masterVolume": 1.0,
+    "musicVolume": 0.8,
+    "sfxVolume": 1.0,
+    "ttsVolume": 1.0,
+    "microphoneVolume": 1.0,
+    "audioOutputDevice": "",
+    "microphoneDevice": "",
+    "sampleRate": 44100,
+    "bufferSize": 1024
+  },
+  "ui": {
+    "fontSize": 14,
+    "fontFamily": "Arial",
+    "maxChatMessages": 100,
+    "messageDisplayDuration": 5.0,
+    "showTimestamp": true,
+    "enableAnimations": true,
+    "animationSpeed": 1.0,
+    "chatPanelWidth": 400.0,
+    "chatPanelHeight": 600.0
+  },
+  "network": {
+    "cozeApiKey": "",
+    "cozeAgentId": "",
+    "cozeBaseUrl": "https://api.coze.cn/v3/chat",
+    "doubaoAppId": "",
+    "doubaoToken": "",
+    "doubaoCluster": "",
+    "doubaoResourceId": "",
+    "requestTimeout": 30.0,
+    "maxRetryAttempts": 3,
+    "retryDelay": 1.0,
+    "useProxy": false,
+    "proxyUrl": "",
+    "proxyPort": 8080
+  },
+  "developer": {
+    "logLevel": 1,
+    "enableConsoleLog": true,
+    "enableFileLog": false,
+    "enablePerformanceMonitor": false,
+    "showFPS": false,
+    "showMemoryUsage": false,
+    "enableExperimentalFeatures": false,
+    "enableBetaMode": false
+  },
+  "voice": {
+    "wakeWord": "小美小美",
+    "wakeWordConfidence": 0.7,
+    "enableWakeWord": true,
+    "speechLanguage": "zh-CN",
+    "speechTimeout": 5.0,
+    "enableRealTimeRecognition": true,
+    "ttsVoice": "xiaoyan",
+    "ttsSpeed": 1.0,
+    "ttsPitch": 1.0,
+    "enableStreamTTS": false,
+    "ttsBufferTime": 0.5,
+    "minTextLength": 3
+  },
+  "ai": {
+    "systemPrompt": "你是一个友好的AI助手",
+    "maxHistoryLength": 15,
+    "enableStreamResponse": false,
+    "responseTimeout": 30.0,
+    "enableAutoResponse": false,
+    "autoResponseDelay": 2.0,
+    "enableContentFilter": true,
+    "blockedWords": []
+  },
+  "vision": {
+    "glmApiKey": "0f7c17daae644dafab98e1e1422cd59c.bXwSTYvzitFJ1Ost",
+    "glmApiBaseUrl": "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+    "glmModel": "glm-4.6v-flash",
+    "enableAutoAnalyze": false,
+    "analyzeInterval": 5.0,
+    "maxImageWidth": 1024,
+    "maxImageHeight": 1024,
+    "imageQuality": 80,
+    "enableThinking": true,
+    "defaultPrompt": "请详细描述这张图片的内容，包括场景、人物、物体、动作等。",
+    "autoAttachVision": false,
+    "visionTriggerKey": 118
+  }
+}

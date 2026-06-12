@@ -1,0 +1,321 @@
+我会先读 `ragflow-0.24.0` 里和“数据集/文件上传/构建记忆”和 Web 界面相关的文档与核心代码，然后给你两部分：1）架构和目录说明；2）基于这些的、适配你项目的详细改造计划。
+
+[10 tools called]
+
+### 一、先说结论（方便你决策）
+
+- **RAGFlow 本身就是一套“文档 → 知识库 → 分块 → 向量 → 检索”的完整实现**，你现在把源码放在 `Assets/Arsts/ragflow-0.24.0`，非常适合作为“蓝本”来抄架构。
+- 你没必要把它整套跑起来，只需要：
+  - **理解它的后端分层：知识库（KB）+ 文档（Document）+ 文件系统（File）+ 任务（Task）+ 向量存储；**
+  - **理解它的 Web 前端怎么调用这些 API；**
+  - 然后在你自己的 `digital_human_backend` 里，按同样的分层和接口风格，实现一个“精简版”。
+
+下面分两块：  
+1）**RAGFlow 相关目录和上传/记忆构建流程说明**；  
+2）**基于这些的、针对你项目的详细改造计划（以后按这个来改代码）**。
+
+---
+
+## 二、`ragflow-0.24.0` 与“上传+构建记忆”直接相关的目录说明
+
+只列你需要关心的部分：
+
+- **`api/`（后端 HTTP / SDK 层）**
+  - `api/apps/kb_app.py`  
+    - 知识库（Dataset / Knowledgebase）相关 API：创建、更新、删除、详情、列表、统计信息等。
+  - `api/apps/document_app.py`  
+    - **文档相关 API 的“大本营”**，和“上传→解析→构建记忆”最强相关：
+      - `/upload`：向指定 KB 上传文件（pdf/word/txt 等），只存储为 Document 记录和原始文件，不立即解析。
+      - `/list`：列出某 KB 下的所有文档及状态（run/progress/chunk_num 等）。
+      - `/run`：对一个或多个文档发起解析任务（分块 + 嵌入 + 入向量库）。
+      - `/change_status`：启用/禁用某文档的检索可用状态。
+      - `/rm`：删除文档（包括向量库中的 chunk、缩略图、元数据等）。
+      - `/parse`：单纯解析文件或 URL 成文本（不一定存为记忆），用于一些临时场景。
+      - `/upload_and_parse`：聊天对话里临时上传文档并直接解析（对话级别）。
+  - `api/apps/file2document_app.py`  
+    - 把“文件管理”里的 File 关联到一个或多个 KB，生成 Document 记录：
+      - `/convert`：给一批文件 ID + 一批 KB ID → 为每个 KB 建立对应的 Document，并后续由 Document pipeline 去解析。
+  - `api/db/services/document_service.py`  
+    - **文档和解析任务核心逻辑**：
+      - `get_by_kb_id` / `get_filter_by_kb_id`：文档列表和过滤。
+      - `insert` / `remove_document` / `clear_chunk_num`：插入/删除文档及其统计。
+      - `begin2parse` / `update_progress` / `get_unfinished_docs`：任务进度管理。
+      - `run(tenant_id, doc, kb_table_num_map)`：**真正把某个 Document 放进“解析+建索引 pipeline” 的入口**：
+        - 如果配置了 `pipeline_id`：走可视化 DataFlow；
+        - 否则：通过 `queue_tasks(...)` 把 `(doc, 文件存储地址)` 推入后台任务队列。
+      - `queue_raptor_o_graphrag_tasks(...)`：GraphRAG / RAPTOR / 思维导图类任务的队列化。
+
+- **`deepdoc/`（文档解析服务）**
+  - 负责对 pdf / docx / txt / 图片等进行：
+    - 版面分析、OCR、表格抽取；
+    - 内容切分（Chunk）；
+    - 多模态处理（图片 → 文本）。
+  - 在 `doc_upload_and_parse` 中，按 `ParserType` 调用了不同解析器（`naive`, `presentation`, `picture`, `audio`, `email` 等）。
+
+- **`rag/`（RAG + 检索 + 向量存储）**
+  - `rag/nlp/search.py`：对接 Elasticsearch / Infinity 的检索封装，对 KB + 文档的 chunk 做搜索。
+  - `rag/app/...`：不同类型文档的 chunk 生成逻辑（在 `doc_upload_and_parse` 里通过 FACTORY 使用）。
+  - `rag/graphrag/...`：GraphRAG、思维导图等高级能力。
+
+- **`memory/`**
+  - 这边主要是高层“记忆管理”和 Agent 记忆，与“文档上传→建向量”衔接在一起，给对话侧用。
+
+- **`web/`（前端）**
+  - `web/src/services/knowledge-service.ts`  
+    - 所有和 Dataset / Document / Chunk 管理相关的前端 API 封装都在这里：
+      - `document_upload` → 调用 `/v1/document/upload`；
+      - `document_run` → 调用 `/v1/document/run`；
+      - `get_document_list` → `/v1/document/list`；
+      - `chunk_list` / `create_chunk` / `set_chunk` / `retrieval_test` 等。
+  - `web/src/pages/dataset/...`  
+    - Dataset 列表页、Dataset 概览页、Dataset 内部的文件列表、Chunk 预览页等（通过 `kbService` 调 `knowledge-service.ts` 中的方法）。
+  - `web/src/utils/api.ts` / `web/src/utils/request.ts`  
+    - 封装 URL 与 `request` 工具，控制基础 URL、错误处理等。
+
+- **`docs/`（文档）**
+  - `docs/quickstart.mdx`：从启动服务 → 创建 Dataset → 上传文件 → 解析 → 配置对话的完整流程说明。
+  - `docs/guides/manage_files.md`：文件管理（全局的 File 管理器）说明。
+  - `docs/references/http_api_reference.md`：HTTP API 的详细列表（Dataset / Document / Files / Chat 等），你可以参考它来设计你自己的接口。
+
+---
+
+## 三、RAGFlow “上传文档 → 构建记忆”的完整后端流程（精简版视角）
+
+### 1. 按 Dataset（知识库）上传 & 构建记忆
+
+**步骤 A：前端调用上传**
+
+- Web UI 在 Dataset 的“文件列表”中点击“上传本地文件”，调用 `knowledge-service.ts` 中的：
+
+```ts
+document_upload: { url: api.document_upload, method: 'post' }
+```
+
+- 传参形式（`multipart/form-data`）：
+  - `kb_id`: 当前选择的数据集 ID；
+  - `file`: 一个或多个文件（pdf/docx/txt等）。
+
+**步骤 B：后端接收上传**
+
+- `api/apps/document_app.py::upload`：
+
+  - 检查 `kb_id` 是否存在、权限是否通过；
+  - 调用 `FileService.upload_document(kb, file_objs, current_user.id)`：
+    - 保存原始文件到对象存储（MinIO 或本地）；
+    - 生成 `Document` 记录（文档元数据：`kb_id`、`parser_id`、`parser_config`、`name`、`location`、`size` 等）；
+    - 在 File 管理中生成对应的 File 夹条目（方便全局管理）。
+
+  - 返回一组 `files` 信息（文档的 DB 记录），此时**只是“已上传，未解析”**。
+
+**步骤 C：前端触发“解析”**
+
+- 在 Dataset 文件列表里，每个文档右侧有一个“▶（运行）”按钮，对应调用：
+
+```ts
+document_run: { url: api.document_run, method: 'post' }
+```
+
+- 实际会 POST 到 `/v1/document/run`，请求体包括：
+  - `doc_ids`: 要解析的文档 ID 列表；
+  - `run`: `"1"`（RUNNING），还有一些可选参数如 `delete`、`apply_kb` 等。
+
+**步骤 D：后端调度解析任务**
+
+- `document_app.run`：
+
+  - 对每个 `doc_id`：
+    - 检查权限；
+    - 如果是“重跑+删除旧 chunk”，清空旧向量（`settings.docStoreConn.delete({"doc_id": id}, ...)`）；
+    - 更新 Document 的 `run`、`progress`、`progress_msg` 等；
+    - 调用 `DocumentService.run(tenant_id, doc_dict, kb_table_num_map)`。
+
+- `DocumentService.run`（关键）：
+
+  - 准备基本信息（`tenant_id`, `doc_id`, `parser_id`, `kb_id` 等）。
+  - 如果配置了 `pipeline_id`（高级 DataFlow），调用 `queue_dataflow`。
+  - 否则：
+    - 查出 `(bucket, object_name)`（文件在对象存储中的位置）；
+    - 调用 `queue_tasks(doc, bucket, name, priority)`，把任务推入 Redis 队列，由后台 consumer 拉取处理。
+
+**步骤 E：后台任务消费 & 解析 + 嵌入 + 入向量库**
+
+- 在 `document_service.doc_upload_and_parse` 中可以看到这条典型 pipeline 的结构（对话上传用的，但本质一样）：
+
+  1. 按 `ParserType` 选择对应解析器（`presentation`, `picture`, `audio`, `email` 或 `naive`），对每个文档生成一组 `cks`（chunk）：
+     - `content_with_weight`：文本内容；
+     - `page_num` / `position` / `image` 等辅助信息。
+  2. 使用 Embedding 模型（`LLMBundle(..., LLMType.EMBEDDING, ...)`）对 chunk 文本批量编码：
+     - 得到向量列表 `vectors`；
+     - 写入到每个 chunk 的 `q_<dim>_vec` 字段。
+  3. 用 `docStoreConn`（Elasticsearch / Infinity 封装）执行：
+     - 建立或检查 index（`create_idx(...)`）；
+     - `insert(chunks, idx_name, kb_id)` 插入向量 + 文本 + 元数据。
+  4. 调用 `DocumentService.increment_chunk_num(...)`：
+     - 更新 Document 和 Knowledgebase 的 `token_num`、`chunk_num` 统计。
+
+**结果：**  
+对于某个 `kb_id` 下的所有 Document，它们的内容最终都以**chunk + 向量**的形式存储在 `docStoreConn` 中，并带有 `kb_id`、`doc_id`、`page`、`position` 等元信息，检索时直接用这些信息做 RAG。
+
+---
+
+### 2. 文件管理（File Management） + 关联多个 Dataset
+
+若你需要“一次上传文件，链接到多个知识库”，RAGFlow 提供了另一条路径：
+
+- 在“File 管理”中上传文件（`docs/guides/manage_files.md` 描述了 UI）。
+- 之后通过 `file2document_app.convert`：
+
+  - 输入：
+    - `file_ids`: 选中的文件/文件夹 ID 列表；
+    - `kb_ids`: 目标知识库 ID 列表。
+  - 对每个 `file_id`（如果是 folder，会递归拿最里层文件）+ 每个 `kb_id` 创建一个 Document，映射到原始 File 的 `location`/`size`。
+  - 之后仍然用 `document_run` + `DocumentService.run` 去解析并建索引。
+
+这样做的好处是：删除某个 Dataset 时，可以不删原始文件，后续再链接到别的 Dataset 使用。
+
+---
+
+## 四、Web 部分是怎么“串起来”的？
+
+以 `web/src/services/knowledge-service.ts` 为核心：
+
+- `kbService` 是通过 `registerServer(methods, request)` 构建的一个统一服务对象，方法名和后端 API 一一对应，如：
+  - `kbService.document_upload({...})` → `/v1/document/upload`
+  - `kbService.document_run({...})` → `/v1/document/run`
+  - `kbService.get_document_list({...})` → `/v1/document/list`
+  - `kbService.chunk_list({...})` / `kbService.set_chunk({...})` 等。
+
+在页面上：
+
+- Dataset 列表 / 配置页（`/dataset`）：
+  - 通过 `kbService.getList` / `kbService.get_kb_detail` 获取数据集；
+  - 通过 `kbService.updateKb` 更新 embedding 模型、chunk 模板等。
+
+- Dataset 内的文档列表页：
+  - 通过 `kbService.get_document_list` 拉取文档；
+  - 调 `kbService.document_upload` 上传文件；
+  - 调 `kbService.document_run` 发起解析；
+  - 调 `kbService.document_change_status` 启用/停用某些文档参与检索。
+
+- Chunk 预览 / 干预页：
+  - 通过 `kbService.chunk_list` 拉 chunk；
+  - 通过 `kbService.set_chunk` 修改 chunk 内容或增加关键词（影响检索排序）；
+  - `kbService.retrieval_test` 做“检索测试”。
+
+**你要学的是：**  
+前端并不关心“解析怎么做、向量存哪儿”，它只关心：  
+**Dataset → Document → Chunk → 检索测试** 这一套 REST API 调用流程。
+
+---
+
+## 五、基于 RAGFlow，为你项目制定的详细改造计划
+
+结合你已有的 `Assets/Arsts/digital_human_backend` 和 Unity 前端，我们用 RAGFlow 的思路做一个“精简版”路线图——以后你就可以按这个表来一步步改。
+
+### 阶段 1：后端数据模型设计（对照 RAGFlow）
+
+在 `digital_human_backend/app` 里增加或规范三类模型：
+
+- **KnowledgeBase（数据集/知识库）**
+  - 字段：`id`, `name`, `description`, `parser_config`, `embd_id`, `language`, `created_by` 等。
+  - 类似 `KnowledgebaseService` 的功能：创建/更新/删除/列表/统计。
+
+- **Document（文档）**
+  - 字段：`id`, `kb_id`, `name`, `type`(pdf/docx/txt)，`location`(文件存储路径), `size`,
+    `parser_id`, `parser_config`, `run`, `progress`, `chunk_num`, `token_num` 等。
+  - 类似 `Document` + `DocumentService`。
+
+- **File（可选）**
+  - 如果你也想做“全局文件管理+多 Dataset 关联”，可以再加一个 File 层，仿 `FileService` + `File2DocumentService`；
+  - 如果暂时不需要，**可以跳过 File 层，直接走“Dataset 内上传”模式**。
+
+### 阶段 2：后端 API 设计（参考 RAGFlow 路由）
+
+在 FastAPI 里新增路由，模仿 RAGFlow 的风格，但可以先做简单版：
+
+- **知识库相关**
+  - `POST /api/knowledge_bases/create`
+  - `POST /api/knowledge_bases/update`
+  - `POST /api/knowledge_bases/list`
+  - `POST /api/knowledge_bases/delete`
+
+- **文档上传 & 管理**
+  - `POST /api/documents/upload`（模仿 `document_app.upload`）
+    - 入参：`kb_id` + 文件（multipart/form-data）。
+    - 逻辑：保存文件 → 新建 Document → 返回 Document 信息。
+  - `POST /api/documents/list`
+    - 按 `kb_id` 列出所有文档及 `run/progress/chunk_num` 等。
+  - `POST /api/documents/run`
+    - 入参：`doc_ids`, `run`（如 `"running"` / `"cancel"`），`delete`（是否清除旧 chunk）。
+    - 逻辑：类似 `document_app.run`，调用 `DocumentService.run`。
+  - `POST /api/documents/change_status`
+  - `POST /api/documents/delete`
+
+> 第一版可以只做 `upload / list / run / delete` 四个，元数据与过滤后面再加。
+
+### 阶段 3：解析 + 嵌入 + 入向量库 Pipeline（对照 `doc_upload_and_parse`）
+
+在 `digital_human_backend` 中新建一个模块，例如 `app/brain/memory/ingest_pipeline.py`，主要功能：
+
+1. **文件解析（Parser 层）**
+   - 根据扩展名选择解析函数，借鉴 RAGFlow 的 `ParserType` 思路：
+     - pdf → pdf_parser（先用简单方案：`pdfplumber` 纯文本）；
+     - docx → docx_parser；
+     - txt → 直接读取；
+     - 后面再考虑图片/OCR 等。
+   - 输出统一的 chunk 列表：`[{ "content_with_weight": "...", "page": 1, "position": 0, ... }, ...]`。
+
+2. **分块策略（Chunking）**
+   - 初期用简单文本分块：
+     - 固定字数或 token 数（类似 RAGFlow 的 `chunk_token_num` 和 `delimiter` 概念）；
+   - 留出配置位置：`parser_config` 中记录 chunk 大小、重叠长度等。
+
+3. **Embedding（向量化）**
+   - 调用你现有的 LLM/Embedding 包装（类似 `LLMBundle(tenant_id, LLMType.EMBEDDING, ...)`）；
+   - 批量 encode，写入 `q_<dim>_vec` 字段。
+
+4. **存入向量库**
+   - 如果你已经在 `digital_human_backend` 里接了 Chroma/PGVector/ES 等，就调用对应 insert 接口；
+   - 结构上模仿：
+     - index 名：按 tenant / kb 分；
+     - 文档字段：`kb_id`, `doc_id`, `content_with_weight`, `page`, `position`, `vector`。
+
+5. **统计更新**
+   - 为每个 Document 更新 `token_num`, `chunk_num`, `process_duration`；
+   - 为对应 KnowledgeBase 累加统计（方便页面展示）。
+
+你可以直接把 `doc_upload_and_parse` 当作功能蓝本，把里面的流程拆成几个可调用函数，再按你这边的依赖替换（比如你可能不用 Redis 队列，可以直接在后台线程跑）。
+
+### 阶段 4：聊天 `/api/chat` 与记忆检索对接
+
+- 在你现有的聊天 service 里：
+  - 增加一个参数 `kb_ids` 或 `knowledge_base_id`；
+  - 在生成回答前：
+    - 调“记忆检索模块”（类似 RAGFlow 的 `settings.retriever.search`），根据问题在指定 KB 的向量库中检索 top-K chunk；
+    - 把 chunk 内容拼到 Prompt 前面作为上下文；
+    - 然后再调用大模型生成回答。
+
+- 这里的“记忆检索模块”可以直接参考 RAGFlow 的 `rag.nlp.search` 设计，把索引名和过滤条件（`kb_id`, `available_int=1` 等）作为查询条件。
+
+### 阶段 5：前端（Unity / Web）对接
+
+- **Unity 侧：**
+  - 在设置或管理界面新增“知识库管理/文档上传”窗口：
+    - 用 `UnityWebRequest` 上传文件到 `/api/documents/upload`；
+    - 列表展示后端返回的 Document 列表（状态、进度）；
+    - 提供“开始解析”、“删除”等按钮，对应 `run` / `delete` 接口。
+  - 聊天前，在场景/角色配置中记录一个 `kb_id`，发 `/api/chat` 时一起带过去。
+
+- **如果你也想保留 Web 管理界面：**
+  - 可以仿 `web/src/services/knowledge-service.ts` 的做法：
+    - 写一个 TypeScript 或 C# 的 API 封装类，方法与后端路由一一对应；
+    - 页面上只调用这些方法，不关心内部细节。
+
+---
+
+如果你愿意，下一步我可以**选一个具体子目标**，比如：
+
+- 只先实现“后端的 `/api/documents/upload` + `/api/documents/run` 两个接口”和对应的 Python 伪代码；  
+- 或者先给你设计“记忆向量库的数据结构和检索接口”。
+
+你可以告诉我优先级，我就按这个计划从最核心的部分开始帮你细化/落代码。
