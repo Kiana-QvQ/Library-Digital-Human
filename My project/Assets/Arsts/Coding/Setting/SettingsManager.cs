@@ -340,29 +340,7 @@ public class SettingsManager : MonoBehaviour
     /// </summary>
     private void ApplyVisionSettings()
     {
-        // 同步视觉设置到 GLMVisionSettings / GLMVisionClient 组件
-        GLMVisionSettings visionSettingsComponent = FindObjectOfType<GLMVisionSettings>();
-        if (visionSettingsComponent != null)
-        {
-            // 基础凭证
-            visionSettingsComponent.SetApiKey(settings.vision.glmApiKey);
-
-            // 同步到 GLMVisionClient（包括路由模式和后端 URL）
-            GLMVisionClient visionClient = visionSettingsComponent.GetVisionClient();
-            if (visionClient != null)
-            {
-                visionClient.SetCredentials(
-                    settings.vision.glmApiKey,
-                    settings.vision.glmApiBaseUrl,
-                    settings.vision.glmModel
-                );
-
-                visionClient.ApplyRoutingSettings(
-                    settings.vision.routeMode,
-                    settings.vision.backendVisionUrl
-                );
-            }
-        }
+        // GLM/OpenCV 视觉模块已移除，设置仅保留在 SettingsData 中供将来恢复。
     }
     
     /// <summary>

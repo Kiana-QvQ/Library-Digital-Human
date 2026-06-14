@@ -16,9 +16,6 @@ public class APIManager : MonoBehaviour
     [Tooltip("百度配置")]
     public BaiduSettings baiduSettings;
     
-    [Tooltip("GLM视觉配置 - 可以直接从Project窗口拖拽脚本文件到GameObject上挂载，或拖拽已挂载的组件引用")]
-    public GLMVisionSettings glmVisionSettings;
-    
     [Header("调试设置")]
     [SerializeField] private bool enableDebug = true;
     
@@ -62,9 +59,6 @@ public class APIManager : MonoBehaviour
         if (baiduSettings == null)
             baiduSettings = FindObjectOfType<BaiduSettings>();
         
-        if (glmVisionSettings == null)
-            glmVisionSettings = FindObjectOfType<GLMVisionSettings>();
-        
         // 初始化所有Settings
         InitializeAllSettings();
     }
@@ -93,13 +87,6 @@ public class APIManager : MonoBehaviour
         {
             Debug.Log("APIManager: BaiduSettings已找到");
         }
-        
-        if (glmVisionSettings != null)
-        {
-            glmVisionSettings.Initialize();
-            if (enableDebug)
-                Debug.Log("APIManager: GLMVisionSettings已初始化");
-        }
     }
     
     /// <summary>
@@ -116,11 +103,6 @@ public class APIManager : MonoBehaviour
     /// 获取百度配置
     /// </summary>
     public BaiduSettings GetBaiduSettings() => baiduSettings;
-    
-    /// <summary>
-    /// 获取GLM视觉配置
-    /// </summary>
-    public GLMVisionSettings GetGLMVisionSettings() => glmVisionSettings;
     
     /// <summary>
     /// 设置Coze配置
@@ -152,18 +134,6 @@ public class APIManager : MonoBehaviour
     public void SetBaiduSettings(BaiduSettings settings)
     {
         baiduSettings = settings;
-    }
-    
-    /// <summary>
-    /// 设置GLM视觉配置
-    /// </summary>
-    public void SetGLMVisionSettings(GLMVisionSettings settings)
-    {
-        glmVisionSettings = settings;
-        if (glmVisionSettings != null)
-        {
-            glmVisionSettings.Initialize();
-        }
     }
 }
 

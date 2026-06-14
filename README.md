@@ -47,10 +47,10 @@ API 文档：http://127.0.0.1:8000/docs
 
 - Unity `Library/`、`Temp/`、`Logs/`、`UserSettings/`
 - 构建产物 `UnityOutput/`
-- `*.unitypackage`、OpenCV 移动端/WebGL 插件等大体积二进制
+- `*.unitypackage`、构建产物等大体积二进制
 - 本地 `.env`、向量库数据、日志
 
-克隆后若缺少 OpenCV 插件，请从原 OpenCVForUnity 安装包恢复 `Assets/Plugins/OpenCVForUnity/Plugins/` 中所需平台文件，或仅保留 Windows x86_64 用于编辑器开发。
+克隆后直接在 Unity Hub 打开 `My project` 即可开发，无需额外安装 OpenCV 插件。
 
 ## 协作
 

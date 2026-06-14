@@ -343,17 +343,7 @@ public class VisionSettingsPanel : MonoBehaviour
     /// </summary>
     private void TestVision()
     {
-        Debug.Log("测试视觉分析功能");
-        GLMVisionClient visionClient = FindObjectOfType<GLMVisionClient>();
-        if (visionClient != null)
-        {
-            visionClient.AnalyzeCurrentFrame(currentSettings.defaultPrompt);
-            Debug.Log("视觉分析请求已发送");
-        }
-        else
-        {
-            Debug.LogWarning("未找到 GLMVisionClient 组件");
-        }
+        Debug.LogWarning("视觉分析模块已移除，无法测试。");
     }
     
     /// <summary>

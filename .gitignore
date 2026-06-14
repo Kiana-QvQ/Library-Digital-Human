@@ -59,15 +59,6 @@ UpgradeLog.htm
 *.mov
 *.bc
 
-# OpenCV: optional platforms & extra package (keep Windows x86_64 for editor)
-My project/Assets/Plugins/OpenCVForUnity/Extra.unitypackage
-My project/Assets/Plugins/OpenCVForUnity/Plugins/Android/
-My project/Assets/Plugins/OpenCVForUnity/Plugins/iOS/
-My project/Assets/Plugins/OpenCVForUnity/Plugins/WebGL/
-My project/Assets/Plugins/OpenCVForUnity/Plugins/WSA/
-My project/Assets/Plugins/OpenCVForUnity/Plugins/macOS/
-My project/Assets/Plugins/OpenCVForUnity/Plugins/Linux/
-
 # ========== Python backend ==========
 digital_human_backend/.env
 digital_human_backend/data/
