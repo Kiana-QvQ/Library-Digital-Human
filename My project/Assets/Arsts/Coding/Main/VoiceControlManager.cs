@@ -96,17 +96,14 @@ public class VoiceControlManager : MonoBehaviour
     public CozeAgentClient cozeAgentClient;
 
     [Header("后端聊天设置")]
-    [Tooltip("是否通过后端 /api/chat 进行对话（关闭则直接调用 Coze 等前端提供商）")]
-    [SerializeField] private bool useBackendForChat = false;
+    [Tooltip("是否通过后端 /api/chat 转发至学校大模型")]
+    [SerializeField] private bool useBackendForChat = true;
 
-    [Tooltip("后端聊天接口地址，例如 http://127.0.0.1:8000/api/chat")]
-    [SerializeField] private string backendChatUrl = "http://127.0.0.1:8000/api/chat";
+    [Tooltip("后端聊天接口地址，需与 digital_human_backend 的 PORT 一致")]
+    [SerializeField] private string backendChatUrl = "http://127.0.0.1:8173/api/chat";
 
-    [Tooltip("后端聊天模型选择（用于 digital_human_backend 的 Ollama 路线，例如：Qwen / Chatglm）")]
+    [Tooltip("保留字段，转发模式下由后端固定模型，此处可不填")]
     [SerializeField] private string backendChatModelKey = "Qwen";
-
-    [Tooltip("走后端 /api/chat 时绑定的知识库 UUID（与 digital_human_backend 知识库 id 一致）；空则使用后端默认知识库")]
-    [SerializeField] private string backendChatKnowledgeBaseId = "e879f25e-1f28-46d4-8629-4ad0a537a6d2";
 
     [Header("API管理")]
     [Tooltip("统一的API管理器")]
@@ -164,7 +161,7 @@ public class VoiceControlManager : MonoBehaviour
     
     // TTS播放状态，用于防止TTS音频被识别为用户输入
     private bool isTTSPlaying = false;
-    private bool llmFeaturesDisabled = true;
+    private bool llmFeaturesDisabled = false;
 
     // 后端会话ID（可选，用于与后端保持上下文）
     private string backendSessionId = null;
@@ -429,9 +426,18 @@ public class VoiceControlManager : MonoBehaviour
 
     private void InitializeServices()
     {
-        llmFeaturesDisabled = true;
+        // 学校大模型经后端纯转发，不走 Coze 直连
+        llmFeaturesDisabled = false;
         useCozeStreaming = false;
-        useBackendForChat = false;
+        if (!useBackendForChat)
+        {
+            useBackendForChat = true;
+        }
+
+        Debug.Log(
+            $"[API Settings] 后端聊天已启用: useBackendForChat={useBackendForChat}, url={backendChatUrl}",
+            this
+        );
 
         if (baiduInTimeVoice == null)
             baiduInTimeVoice = GetComponent<BaiduInTimeVoice>();
@@ -511,12 +517,7 @@ public class VoiceControlManager : MonoBehaviour
             }
         }
 
-        // 大模型 / 后端 / 知识库已断开（保留序列化字段供将来恢复，运行时不读取 PlayerPrefs 路由）
-        useBackendForChat = false;
-        useCozeStreaming = false;
-        Debug.Log("[API Settings] LLM、后端 /api/chat 与知识库已断开，对话走本地占位提示。", this);
-
-        // 固定 TTS 走百度，不走 Coze/豆包流式分支
+        // 固定 TTS 走百度
         if (ttsManager != null)
         {
             ttsManager.ForceBaiduProvider();
@@ -1463,22 +1464,7 @@ public class VoiceControlManager : MonoBehaviour
             ? ""
             : (message.Length > 80 ? message.Substring(0, 80) + "..." : message);
 
-        // 从 PlayerPrefs 读取 Memory1/2/3 开关，映射为 memory_profile
-        int mem1 = PlayerPrefs.GetInt("Memory1", 0);
-        int mem2 = PlayerPrefs.GetInt("Memory2", 0);
-        int mem3 = PlayerPrefs.GetInt("Memory3", 0);
-
-        int memoryProfile = 0;
-        if (mem1 == 1) memoryProfile = 1;
-        if (mem2 == 1) memoryProfile = 2;
-        if (mem3 == 1) memoryProfile = 3;
-
-        Debug.Log(
-            $"[Memory] PlayerPrefs Memory1={mem1}, Memory2={mem2}, Memory3={mem3} => memory_profile={memoryProfile}",
-            this
-        );
-
-        // 构建请求体
+        // 构建请求体（纯转发：不传知识库、长期记忆）
         BackendChatRequest request = new BackendChatRequest
         {
             message = message,
@@ -1486,13 +1472,8 @@ public class VoiceControlManager : MonoBehaviour
             session_id = backendSessionId,
             system_prompt = null,
             model_key = backendChatModelKey,
-            memory_profile = memoryProfile
+            memory_profile = 0
         };
-        string kbTrim = (backendChatKnowledgeBaseId ?? "").Trim();
-        if (!string.IsNullOrEmpty(kbTrim))
-        {
-            request.kb_id = kbTrim;
-        }
 
         string json = JsonConvert.SerializeObject(request);
         byte[] bodyRaw = Encoding.UTF8.GetBytes(json);
@@ -1505,8 +1486,8 @@ public class VoiceControlManager : MonoBehaviour
 
             LogSystemEvent($"通过后端发送聊天请求: {backendChatUrl}");
             Debug.Log(
-                $"[BackendChat] POST {backendChatUrl} model_key='{backendChatModelKey}' session_id='{backendSessionId ?? ""}' " +
-                $"kb_id='{kbTrim}' message_preview='{preview}'",
+                $"[BackendChat] POST {backendChatUrl} session_id='{backendSessionId ?? ""}' " +
+                $"message_preview='{preview}'",
                 this
             );
 

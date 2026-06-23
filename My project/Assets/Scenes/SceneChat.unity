@@ -12037,9 +12037,8 @@ MonoBehaviour:
   audioClipToPlay: {fileID: 8300000, guid: 4dea0fe872314a54d989d45ca12d8786, type: 3}
   cozeAgentClient: {fileID: 924722078}
   useBackendForChat: 1
-  backendChatUrl: http://127.0.0.1:8173/api/chat/
+  backendChatUrl: http://127.0.0.1:8173/api/chat
   backendChatModelKey: Qwen
-  backendChatKnowledgeBaseId: e879f25e-1f28-46d4-8629-4ad0a537a6d2
   apiManager: {fileID: 0}
   characterAnimator: {fileID: 4546951760939212004}
   startSpeakingThreshold: 0.05

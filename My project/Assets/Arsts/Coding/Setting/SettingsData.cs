@@ -205,17 +205,14 @@ public class AISettings
     public string[] blockedWords = new string[0];
 
     [Header("后端集成")]
-    [Tooltip("是否通过后端 /api/chat 进行对话（关闭则直接调用前端配置的提供商，如 Coze）")]
-    public bool useBackendForChat = false;
+    [Tooltip("是否通过后端 /api/chat 转发至学校大模型")]
+    public bool useBackendForChat = true;
 
-    [Tooltip("后端聊天接口地址，例如 http://127.0.0.1:8000/api/chat")]
-    public string backendChatUrl = "http://127.0.0.1:8000/api/chat";
+    [Tooltip("后端聊天接口地址，需与 digital_human_backend 的 PORT 一致")]
+    public string backendChatUrl = "http://127.0.0.1:8173/api/chat";
 
-    [Tooltip("后端聊天模型选择（用于 digital_human_backend 的 Ollama 路线，例如：Qwen / Chatglm）")]
+    [Tooltip("保留字段，转发模式下由后端固定模型")]
     public string backendChatModelKey = "Qwen";
-
-    [Tooltip("走后端 /api/chat 时可选的知识库 UUID，与后端知识库 id 一致；空则使用后端默认知识库")]
-    public string backendChatKnowledgeBaseId = "e879f25e-1f28-46d4-8629-4ad0a537a6d2";
 }
 
 /// <summary>

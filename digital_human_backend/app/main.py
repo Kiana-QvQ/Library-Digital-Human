@@ -66,6 +66,28 @@ async def root():
 @app.get("/health")
 async def health_check():
     try:
+        use_openai = Config.use_openai_llm()
+        if use_openai:
+            from app.brain.llm.openai_chat import OpenAIChat
+
+            llm_client = OpenAIChat(
+                base_url=Config.LLM_BASE_URL,
+                api_key=Config.LLM_API_KEY,
+                model=Config.LLM_DEFAULT_MODEL,
+                verify_ssl=Config.LLM_VERIFY_SSL,
+            )
+            llm_available = await llm_client.health_check()
+            return {
+                "status": "healthy",
+                "llm_provider": "openai",
+                "llm_available": llm_available,
+                "llm_model": Config.LLM_DEFAULT_MODEL,
+                "services": {
+                    "api": "running",
+                    "llm": "available" if llm_available else "unavailable",
+                },
+            }
+
         from app.brain.llm.ollama_chat import OllamaChat
 
         ollama_chat = OllamaChat(
@@ -76,6 +98,7 @@ async def health_check():
 
         return {
             "status": "healthy",
+            "llm_provider": "ollama",
             "ollama_available": ollama_available,
             "services": {
                 "api": "running",
@@ -98,6 +121,23 @@ async def startup_event():
     logger.info("Starting digital human backend...")
     logger.info(f"Service URL: http://{Config.HOST}:{Config.PORT}")
     logger.info(f"API docs: http://{Config.HOST}:{Config.PORT}/docs")
+    if Config.use_openai_llm():
+        Config.validate_llm_config()
+        if not Config.LLM_VERIFY_SSL:
+            logger.warning(
+                "LLM_VERIFY_SSL=false：已关闭 SSL 证书校验，仅适用于内网自签证书环境"
+            )
+        logger.info(
+            "LLM provider: OpenAI-compatible gateway (%s, model=%s)",
+            Config.LLM_BASE_URL,
+            Config.LLM_DEFAULT_MODEL,
+        )
+    else:
+        logger.info(
+            "LLM provider: Ollama (%s, model=%s)",
+            Config.OLLAMA_BASE_URL,
+            Config.OLLAMA_DEFAULT_MODEL,
+        )
 
 
 @app.on_event("shutdown")

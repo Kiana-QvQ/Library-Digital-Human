@@ -5,10 +5,20 @@ Configuration management
 
 import os
 from typing import Dict, Any
+from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 # 加载环境变量（允许 .env 覆盖系统已有环境变量，确保以项目配置为准）
 load_dotenv(override=True)
+
+
+def _safe_int(name: str, default: int, *, min_val: int, max_val: int) -> int:
+    raw = os.getenv(name, str(default)).strip()
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return max(min_val, min(max_val, value))
 
 class Config:
     """应用配置类"""
@@ -40,15 +50,25 @@ class Config:
     # ChromaDB配置
     CHROMADB_PERSIST_DIR = os.getenv("CHROMADB_PERSIST_DIR", "./data/chromadb")
 
-    # 本地 /api/chat：请求未传 kb_id 时使用的默认知识库（可用环境变量 DEFAULT_CHAT_KB_ID 覆盖；设为空字符串可关闭）
-    _default_chat_kb = os.getenv(
-        "DEFAULT_CHAT_KB_ID", "e879f25e-1f28-46d4-8629-4ad0a537a6d2"
-    ).strip()
+    # 本地 /api/chat：请求未传 kb_id 时使用的默认知识库；留空表示不绑定知识库
+    _default_chat_kb = os.getenv("DEFAULT_CHAT_KB_ID", "").strip()
     DEFAULT_CHAT_KB_ID = _default_chat_kb or None
     
     # AI模型配置
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
     HUGGINGFACE_TOKEN = os.getenv("HUGGINGFACE_TOKEN", "")
+
+    # 学校私有大模型（OpenAI 兼容）；设置 LLM_BASE_URL 后 /api/chat 优先走此路线
+    LLM_BASE_URL = os.getenv("LLM_BASE_URL", "").strip()
+    LLM_API_KEY = os.getenv("LLM_API_KEY", "")
+    LLM_DEFAULT_MODEL = os.getenv("LLM_DEFAULT_MODEL", "qwen2.5-7b-lora-library")
+    LLM_VERIFY_SSL = os.getenv("LLM_VERIFY_SSL", "false").lower() == "true"
+    LLM_MAX_TOKENS = _safe_int("LLM_MAX_TOKENS", 512, min_val=1, max_val=768)
+    # 对方服务总 token 上限 1024；限制输入字符与历史轮数，避免 500
+    LLM_MAX_INPUT_CHARS = _safe_int("LLM_MAX_INPUT_CHARS", 1800, min_val=256, max_val=4000)
+    LLM_MAX_HISTORY_TURNS = _safe_int("LLM_MAX_HISTORY_TURNS", 3, min_val=0, max_val=10)
+    LLM_MAX_MESSAGE_CHARS = _safe_int("LLM_MAX_MESSAGE_CHARS", 800, min_val=64, max_val=2000)
+
     OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     # 默认模型：尽量选择“更可能存在”的本地模型名。
     # 你仍然可以通过环境变量 OLLAMA_DEFAULT_MODEL 覆盖为自己实际存在的 tag。
@@ -98,6 +118,24 @@ class Config:
     MEM0_OLLAMA_EMBED_MODEL = os.getenv("MEM0_OLLAMA_EMBED_MODEL", "nomic-embed-text:latest")
     # nomic-embed-text:latest 在你本机返回 768 维；需与 Qdrant collection 向量维度一致
     MEM0_EMBEDDING_DIMS = int(os.getenv("MEM0_EMBEDDING_DIMS", "768"))
+
+    @classmethod
+    def use_openai_llm(cls) -> bool:
+        """是否使用 OpenAI 兼容网关（配置了 LLM_BASE_URL 即为 True）"""
+        return bool(cls.LLM_BASE_URL)
+
+    @classmethod
+    def validate_llm_config(cls) -> None:
+        """启动时校验 LLM 配置，尽早暴露配置错误。"""
+        if not cls.use_openai_llm():
+            return
+        parsed = urlparse(cls.LLM_BASE_URL)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            raise ValueError(f"LLM_BASE_URL 无效: {cls.LLM_BASE_URL}")
+        if not cls.LLM_API_KEY:
+            raise ValueError("已配置 LLM_BASE_URL 但 LLM_API_KEY 为空")
+        if not cls.LLM_DEFAULT_MODEL.strip():
+            raise ValueError("LLM_DEFAULT_MODEL 不能为空")
 
 # 模型配置
 MODEL_CONFIGS = {

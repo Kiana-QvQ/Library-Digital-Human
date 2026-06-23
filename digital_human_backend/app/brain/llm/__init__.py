@@ -4,6 +4,8 @@ Language Model module
 """
 
 from .ollama_chat import OllamaChat
+from .openai_chat import OpenAIChat
+from .exceptions import LLMRequestError
 
-__all__ = ['OllamaChat']
+__all__ = ['OllamaChat', 'OpenAIChat', 'LLMRequestError']
 
