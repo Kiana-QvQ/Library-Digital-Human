@@ -133,7 +133,7 @@ class RuntimeConfigStore:
         for key, value in updates.items():
             if value is None:
                 continue
-            if key == "llmApiKey" and not str(value).strip():
+            if key in ("llmApiKey", "llmBaseUrl", "llmDefaultModel") and not str(value).strip():
                 continue
             data[key] = value
         data["updatedAt"] = datetime.now().astimezone().isoformat()

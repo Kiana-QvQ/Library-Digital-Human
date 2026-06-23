@@ -152,7 +152,13 @@ class ChatService:
         self.context_builder = None
 
         if self.use_openai:
-            RuntimeConfigStore.validate_llm_config()
+            try:
+                RuntimeConfigStore.validate_llm_config()
+            except ValueError as exc:
+                logger.warning(
+                    "OpenAI 配置不完整，请通过 Qt 管理台或 .env 补全后再对话: %s",
+                    exc,
+                )
             cfg = RuntimeConfigStore.load()
             logger.info(
                 "聊天服务初始化（OpenAI 纯转发: %s, model=%s，已跳过 RAG/mem0）",
@@ -186,6 +192,8 @@ class ChatService:
         system_prompt: Optional[str] = None,
     ) -> Dict:
         """纯转发模式：Unity → 后端 → 学校 OpenAI 兼容网关，不做 RAG/mem0。"""
+        RuntimeConfigStore.validate_llm_config()
+
         full_system_prompt = (system_prompt or "").strip() or (
             "你是图书馆数字人助手，请简洁友好地回答用户问题。"
         )

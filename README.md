@@ -128,6 +128,8 @@ cp data/app_config.example.json data/app_config.json
 
 保存后：**后端下次对话立即生效**；Unity 重新进入场景时会 `GET /api/config/app` 同步 `backendChatUrl`。
 
+Qt 操作日志同时写入 `digital_human_backend/logs/qt_admin.log`，界面底部可查看并支持「清空日志」。
+
 > 也可直接编辑 `data/app_config.json` 或调用 `PUT /api/config/app`（API Key 字段留空表示不修改已保存的 Key）。
 
 ### 3. 连接状态与测试（分开处理）

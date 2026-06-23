@@ -86,15 +86,18 @@ public class BackendConnectionMonitor : MonoBehaviour
         {
             if (fetchAppConfigOnStart)
             {
-                StartCoroutine(FetchAppConfigThenPoll());
+                StartCoroutine(FetchAppConfigThenPoll(runChatProbeOnStart));
             }
             else
             {
                 StartPolling();
+                if (runChatProbeOnStart)
+                {
+                    StartCoroutine(RunChatProbeCoroutine());
+                }
             }
         }
-
-        if (runChatProbeOnStart)
+        else if (runChatProbeOnStart)
         {
             StartCoroutine(RunChatProbeCoroutine());
         }
@@ -110,10 +113,14 @@ public class BackendConnectionMonitor : MonoBehaviour
         ApplyBackendChatUrl(url);
     }
 
-    private IEnumerator FetchAppConfigThenPoll()
+    private IEnumerator FetchAppConfigThenPoll(bool runProbeAfter)
     {
         yield return FetchAppConfigCoroutine();
         StartPolling();
+        if (runProbeAfter)
+        {
+            yield return RunChatProbeCoroutine();
+        }
     }
 
     private string ResolveAppConfigUrl()
@@ -173,13 +180,6 @@ public class BackendConnectionMonitor : MonoBehaviour
         if (voiceControlManager != null)
         {
             voiceControlManager.ApplyBackendChatUrl(backendChatUrl);
-        }
-    }
-
-    {
-        if (!string.IsNullOrWhiteSpace(url))
-        {
-            backendChatUrl = url.Trim();
         }
     }
 

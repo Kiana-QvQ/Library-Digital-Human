@@ -277,6 +277,7 @@ async def update_app_config(payload: AppConfigUpdateRequest) -> AppConfigRespons
     updates = payload.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=400, detail="没有可更新的字段")
+    logger.info("PUT /api/config/app fields=%s", list(updates.keys()))
     cfg = RuntimeConfigStore.save(updates)
     return AppConfigResponse(**cfg.to_public_dict())
 

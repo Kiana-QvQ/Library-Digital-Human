@@ -178,7 +178,10 @@ async def startup_event():
     logger.info(f"Service URL: http://{Config.HOST}:{Config.PORT}")
     logger.info(f"API docs: http://{Config.HOST}:{Config.PORT}/docs")
     if RuntimeConfigStore.use_openai_llm():
-        RuntimeConfigStore.validate_llm_config()
+        try:
+            RuntimeConfigStore.validate_llm_config()
+        except ValueError as exc:
+            logger.warning("OpenAI 配置不完整: %s", exc)
         cfg = RuntimeConfigStore.load()
         if not cfg.llm_verify_ssl:
             logger.warning(
