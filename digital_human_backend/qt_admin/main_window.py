@@ -7,7 +7,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import sys
-from datetime import datetime
 from typing import Any, Dict, Optional
 
 import requests
@@ -29,6 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.shared.config import Config
 from app.shared.runtime_config_store import RuntimeConfigStore
 from qt_admin.log_handler import QtLogBridge, setup_qt_logging
 
@@ -51,6 +51,21 @@ class _AsyncWorker(QThread):
             self.finished_err.emit(str(exc))
 
 
+class _HttpWorker(QThread):
+    finished_ok = Signal(object)
+    finished_err = Signal(str)
+
+    def __init__(self, fn):
+        super().__init__()
+        self._fn = fn
+
+    def run(self):
+        try:
+            self.finished_ok.emit(self._fn())
+        except Exception as exc:  # noqa: BLE001
+            self.finished_err.emit(str(exc))
+
+
 class LiteAdminWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -59,7 +74,7 @@ class LiteAdminWindow(QMainWindow):
 
         self._log_bridge = QtLogBridge()
         setup_qt_logging(self._log_bridge)
-        self._workers: list[_AsyncWorker] = []
+        self._workers: list[QThread] = []
 
         root = QWidget()
         self.setCentralWidget(root)
@@ -68,6 +83,7 @@ class LiteAdminWindow(QMainWindow):
         hint = QLabel(
             "修改后保存至 data/app_config.json；后端运行中则下次对话立即生效。"
             "Unity 打包版启动时会自动拉取 backendChatUrl。"
+            "服务监听端口由 .env 的 PORT 决定，下方端口只读。"
         )
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -77,11 +93,13 @@ class LiteAdminWindow(QMainWindow):
         self.unity_host = QLineEdit("127.0.0.1")
         self.backend_port = QSpinBox()
         self.backend_port.setRange(1, 65535)
-        self.backend_port.setValue(8173)
+        self.backend_port.setReadOnly(True)
+        self.backend_port.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
+        self.backend_port.setToolTip("来自 .env 的 PORT，修改需编辑 .env 并重启后端")
         self.backend_chat_url = QLineEdit()
         self.backend_chat_url.setReadOnly(True)
         unity_form.addRow("Unity 访问 Host", self.unity_host)
-        unity_form.addRow("后端端口", self.backend_port)
+        unity_form.addRow("后端端口（.env PORT）", self.backend_port)
         unity_form.addRow("对话地址（只读）", self.backend_chat_url)
         layout.addWidget(unity_box)
 
@@ -129,7 +147,6 @@ class LiteAdminWindow(QMainWindow):
         self.btn_test_chat.clicked.connect(self.test_backend_chat)
         self.btn_clear_log.clicked.connect(self.log.clear)
         self.unity_host.textChanged.connect(self._refresh_chat_url_preview)
-        self.backend_port.valueChanged.connect(self._refresh_chat_url_preview)
 
         self.load_from_store(clear_log=False)
 
@@ -147,7 +164,8 @@ class LiteAdminWindow(QMainWindow):
 
     def _refresh_chat_url_preview(self) -> None:
         host = self.unity_host.text().strip() or "127.0.0.1"
-        port = self.backend_port.value()
+        port = int(Config.PORT)
+        self.backend_port.setValue(port)
         self.backend_chat_url.setText(f"http://{host}:{port}/api/chat")
 
     def _validate_form(self) -> Optional[str]:
@@ -155,6 +173,9 @@ class LiteAdminWindow(QMainWindow):
             return "请填写学校大模型 Base URL"
         if not self.llm_model.text().strip():
             return "请填写模型名"
+        cfg = RuntimeConfigStore.load()
+        if not self.llm_api_key.text().strip() and not cfg.llm_api_key.strip():
+            return "请填写 API Key（首次保存必填）"
         return None
 
     def load_from_store(self, *, clear_log: bool = True) -> None:
@@ -162,7 +183,6 @@ class LiteAdminWindow(QMainWindow):
             self.log.clear()
         cfg = RuntimeConfigStore.load()
         self.unity_host.setText(cfg.unity_backend_host)
-        self.backend_port.setValue(int(cfg.backend_port))
         self.llm_base_url.setText(cfg.llm_base_url)
         self.llm_api_key.clear()
         self.llm_model.setText(cfg.llm_default_model)
@@ -171,9 +191,9 @@ class LiteAdminWindow(QMainWindow):
         self._refresh_chat_url_preview()
         masked = cfg.to_public_dict().get("llmApiKeyMasked", "")
         logger.info(
-            "已加载配置 unity=%s:%s llm=%s model=%s key=%s",
+            "已加载配置 unity=%s port=%s llm=%s model=%s key=%s",
             cfg.unity_backend_host,
-            cfg.backend_port,
+            Config.PORT,
             cfg.llm_base_url or "(未设置)",
             cfg.llm_default_model,
             masked or "未设置",
@@ -182,7 +202,7 @@ class LiteAdminWindow(QMainWindow):
     def _collect_updates(self) -> Dict[str, Any]:
         updates: Dict[str, Any] = {
             "unityBackendHost": self.unity_host.text().strip() or "127.0.0.1",
-            "backendPort": int(self.backend_port.value()),
+            "backendPort": int(Config.PORT),
             "llmBaseUrl": self.llm_base_url.text().strip(),
             "llmDefaultModel": self.llm_model.text().strip(),
             "llmVerifySsl": bool(self.llm_verify_ssl.isChecked()),
@@ -221,8 +241,7 @@ class LiteAdminWindow(QMainWindow):
         self._persist_updates("保存配置")
 
     def _notify_running_backend(self, updates: Dict[str, Any]) -> None:
-        """后端若在跑，PUT 一次以便 API 层记录；实际对话每次请求都会重读 json。"""
-        port = int(updates.get("backendPort", 8173))
+        port = int(Config.PORT)
         url = f"http://127.0.0.1:{port}/api/config/app"
         try:
             resp = requests.put(url, json=updates, timeout=3)
@@ -272,7 +291,7 @@ class LiteAdminWindow(QMainWindow):
         if not self._persist_updates("对话测试前保存"):
             return
 
-        port = int(self.backend_port.value())
+        port = int(Config.PORT)
         url = f"http://127.0.0.1:{port}/api/chat"
         payload = {
             "message": "连接测试",
@@ -281,34 +300,33 @@ class LiteAdminWindow(QMainWindow):
         }
         self._set_busy(True)
         logger.info("POST %s payload=%s", url, payload)
-        try:
+
+        def _post():
             resp = requests.post(url, json=payload, timeout=60)
             if resp.status_code != 200:
-                logger.error(
-                    "对话测试失败 HTTP %s: %s",
-                    resp.status_code,
-                    resp.text[:300],
-                )
-                QMessageBox.warning(self, "测试失败", resp.text[:300])
-                return
-            data = resp.json()
-            preview = (data.get("response") or "")[:120]
-            session_id = data.get("session_id", "")
-            logger.info(
-                "对话测试成功 session=%s 回复预览=%s",
-                session_id,
-                preview,
-            )
-            QMessageBox.information(self, "测试成功", preview or "(空回复)")
-        except requests.RequestException as exc:
-            logger.error("对话测试网络错误: %s", exc)
-            QMessageBox.warning(
-                self,
-                "测试失败",
-                f"{exc}\n\n请确认后端已启动: python -m app.main",
-            )
-        finally:
-            self._set_busy(False)
+                raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:300]}")
+            return resp.json()
+
+        worker = _HttpWorker(_post)
+        worker.finished_ok.connect(self._on_chat_test_ok)
+        worker.finished_err.connect(self._on_chat_test_err)
+        worker.finished.connect(lambda: self._set_busy(False))
+        worker.start()
+        self._workers.append(worker)
+
+    def _on_chat_test_ok(self, data: dict) -> None:
+        preview = (data.get("response") or "")[:120]
+        session_id = data.get("session_id", "")
+        logger.info("对话测试成功 session=%s 回复预览=%s", session_id, preview)
+        QMessageBox.information(self, "测试成功", preview or "(空回复)")
+
+    def _on_chat_test_err(self, err: str) -> None:
+        logger.error("对话测试失败: %s", err)
+        QMessageBox.warning(
+            self,
+            "测试失败",
+            f"{err}\n\n请确认后端已启动: python -m app.main",
+        )
 
 
 def run() -> int:

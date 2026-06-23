@@ -42,6 +42,8 @@ public class BackendConnectionMonitor : MonoBehaviour
     [SerializeField] private float pollIntervalSeconds = 12f;
     [Tooltip("启动时从后端 GET /api/config/app 拉取 backendChatUrl（打包后无需改 Unity）")]
     [SerializeField] private bool fetchAppConfigOnStart = true;
+    [Tooltip("运行中定期重新拉取配置（秒，0=关闭）；Qt 改地址后 Unity 可不重启场景")]
+    [SerializeField] private float refetchConfigIntervalSeconds = 120f;
     [Tooltip("未绑定 Status Text 时，自动在屏幕左上角创建一条状态栏")]
     [SerializeField] private bool createRuntimeStatusBar = true;
 
@@ -53,6 +55,8 @@ public class BackendConnectionMonitor : MonoBehaviour
     private ConnectionState _state = ConnectionState.Unknown;
     private string _statusDetail = "尚未检测";
     private bool _chatProbeRunning;
+    private string _lastAppliedConfigUrl = "";
+    private float _lastConfigFetchTime = -999f;
 
     public ConnectionState State => _state;
     public string StatusDetail => _statusDetail;
@@ -137,36 +141,65 @@ public class BackendConnectionMonitor : MonoBehaviour
 
     private IEnumerator FetchAppConfigCoroutine()
     {
-        string url = ResolveAppConfigUrl();
-        using (UnityWebRequest req = UnityWebRequest.Get(url))
+        string[] candidates = BuildAppConfigUrlCandidates();
+        foreach (string url in candidates)
         {
-            req.timeout = 6;
-            yield return req.SendWebRequest();
-
-            if (req.result != UnityWebRequest.Result.Success)
+            using (UnityWebRequest req = UnityWebRequest.Get(url))
             {
-                Debug.LogWarning($"[BackendConnectionMonitor] 拉取运行时配置失败: {req.error}", this);
-                yield break;
-            }
+                req.timeout = 6;
+                yield return req.SendWebRequest();
 
-            try
-            {
-                AppConfigResponse cfg = JsonConvert.DeserializeObject<AppConfigResponse>(req.downloadHandler.text);
-                if (cfg != null && !string.IsNullOrWhiteSpace(cfg.backendChatUrl))
+                if (req.result != UnityWebRequest.Result.Success)
                 {
-                    ApplyBackendChatUrl(cfg.backendChatUrl.Trim());
-                    string log =
-                        $"[BackendConnectionMonitor] 已应用运行时配置 backendChatUrl={cfg.backendChatUrl}, " +
-                        $"model={cfg.llmDefaultModel ?? ""}";
-                    Debug.Log(log, this);
-                    OperationLogger.LogSystem(log);
+                    continue;
+                }
+
+                try
+                {
+                    AppConfigResponse cfg = JsonConvert.DeserializeObject<AppConfigResponse>(req.downloadHandler.text);
+                    if (cfg != null && !string.IsNullOrWhiteSpace(cfg.backendChatUrl))
+                    {
+                        string chatUrl = cfg.backendChatUrl.Trim();
+                        if (chatUrl != _lastAppliedConfigUrl)
+                        {
+                            ApplyBackendChatUrl(chatUrl);
+                            _lastAppliedConfigUrl = chatUrl;
+                            string log =
+                                $"[BackendConnectionMonitor] 已应用运行时配置 backendChatUrl={chatUrl}, " +
+                                $"model={cfg.llmDefaultModel ?? ""}";
+                            Debug.Log(log, this);
+                            OperationLogger.LogSystem(log);
+                        }
+                        _lastConfigFetchTime = Time.unscaledTime;
+                        yield break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"[BackendConnectionMonitor] 解析运行时配置失败: {ex.Message}", this);
                 }
             }
-            catch (Exception ex)
-            {
-                Debug.LogWarning($"[BackendConnectionMonitor] 解析运行时配置失败: {ex.Message}", this);
-            }
         }
+
+        Debug.LogWarning("[BackendConnectionMonitor] 拉取运行时配置失败，将使用 Inspector 中的默认地址", this);
+    }
+
+    private string[] BuildAppConfigUrlCandidates()
+    {
+        var list = new System.Collections.Generic.List<string>();
+        string primary = ResolveAppConfigUrl();
+        if (!string.IsNullOrWhiteSpace(primary))
+        {
+            list.Add(primary);
+        }
+
+        const string fallback = "http://127.0.0.1:8173/api/config/app";
+        if (!list.Contains(fallback))
+        {
+            list.Add(fallback);
+        }
+
+        return list.ToArray();
     }
 
     private void ApplyBackendChatUrl(string url)
@@ -202,6 +235,12 @@ public class BackendConnectionMonitor : MonoBehaviour
     {
         while (true)
         {
+            if (refetchConfigIntervalSeconds > 0f
+                && Time.unscaledTime - _lastConfigFetchTime >= refetchConfigIntervalSeconds)
+            {
+                yield return FetchAppConfigCoroutine();
+            }
+
             yield return CheckHealthCoroutine(false);
             yield return new WaitForSeconds(Mathf.Max(3f, pollIntervalSeconds));
         }

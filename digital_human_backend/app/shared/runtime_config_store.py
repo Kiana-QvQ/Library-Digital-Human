@@ -34,7 +34,8 @@ class AppRuntimeConfig:
 
     def backend_chat_url(self) -> str:
         host = (self.unity_backend_host or "127.0.0.1").strip()
-        port = int(self.backend_port or 8173)
+        # 对话端口以 .env PORT 为准，避免 Qt 里改了端口但服务仍监听旧端口
+        port = int(Config.PORT)
         return f"http://{host}:{port}/api/chat"
 
     def to_file_dict(self, *, include_secret: bool = True) -> Dict[str, Any]:
@@ -60,7 +61,7 @@ class AppRuntimeConfig:
             masked = ""
         return {
             "backendHost": self.backend_host,
-            "backendPort": self.backend_port,
+            "backendPort": int(Config.PORT),
             "unityBackendHost": self.unity_backend_host,
             "backendChatUrl": self.backend_chat_url(),
             "llmBaseUrl": self.llm_base_url,
@@ -130,6 +131,8 @@ class RuntimeConfigStore:
     def save(cls, updates: Dict[str, Any]) -> AppRuntimeConfig:
         current = cls.load()
         data = current.to_file_dict(include_secret=True)
+        if "backendPort" in updates:
+            updates["backendPort"] = int(Config.PORT)
         for key, value in updates.items():
             if value is None:
                 continue

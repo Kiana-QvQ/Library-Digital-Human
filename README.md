@@ -123,7 +123,7 @@ python run_qt_admin.py
 首次使用可复制示例配置：
 
 ```bash
-cp data/app_config.example.json data/app_config.json
+cp app_config.example.json data/app_config.json
 ```
 
 保存后：**后端下次对话立即生效**；Unity 重新进入场景时会 `GET /api/config/app` 同步 `backendChatUrl`。

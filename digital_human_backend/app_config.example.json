@@ -1,0 +1,11 @@
+{
+  "backendHost": "0.0.0.0",
+  "backendPort": 8173,
+  "unityBackendHost": "127.0.0.1",
+  "llmBaseUrl": "https://172.16.59.220/svc/kaDDxL1y-3/v1",
+  "llmApiKey": "lib-llm-2026-secret-key",
+  "llmDefaultModel": "qwen2.5-7b-lora-library",
+  "llmVerifySsl": false,
+  "llmMaxTokens": 512,
+  "updatedAt": null
+}

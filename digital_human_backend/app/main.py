@@ -122,22 +122,16 @@ async def api_diagnostic():
 @app.get("/health")
 async def health_check():
     try:
-        use_openai = Config.use_openai_llm()
-        if use_openai:
-            from app.brain.llm.openai_chat import OpenAIChat
-
-            llm_client = OpenAIChat(
-                base_url=Config.LLM_BASE_URL,
-                api_key=Config.LLM_API_KEY,
-                model=Config.LLM_DEFAULT_MODEL,
-                verify_ssl=Config.LLM_VERIFY_SSL,
-            )
-            llm_available = await llm_client.health_check()
+        cfg = RuntimeConfigStore.load()
+        if RuntimeConfigStore.use_openai_llm():
+            client = RuntimeConfigStore.create_openai_client()
+            llm_available = await client.health_check()
             return {
                 "status": "healthy",
                 "llm_provider": "openai",
                 "llm_available": llm_available,
-                "llm_model": Config.LLM_DEFAULT_MODEL,
+                "llm_model": cfg.llm_default_model,
+                "backend_chat_url": cfg.backend_chat_url(),
                 "services": {
                     "api": "running",
                     "llm": "available" if llm_available else "unavailable",
