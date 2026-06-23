@@ -15,6 +15,7 @@ from fastapi import APIRouter, Body, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.shared.config import Config
+from app.shared.runtime_config_store import RuntimeConfigStore
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -235,5 +236,63 @@ async def test_coze_config() -> Dict[str, Any]:
         "cozeApiKey_masked": masked,
         "cozeAgentId": cfg.cozeAgentId,
         "cozeBaseUrl": cfg.cozeBaseUrl,
+    }
+
+
+class AppConfigResponse(BaseModel):
+    backendHost: str
+    backendPort: int
+    unityBackendHost: str
+    backendChatUrl: str
+    llmBaseUrl: str
+    llmApiKeyMasked: str = ""
+    llmDefaultModel: str
+    llmVerifySsl: bool
+    llmMaxTokens: int
+    llmConfigured: bool
+    updatedAt: Optional[str] = None
+
+
+class AppConfigUpdateRequest(BaseModel):
+    backendHost: Optional[str] = None
+    backendPort: Optional[int] = None
+    unityBackendHost: Optional[str] = None
+    llmBaseUrl: Optional[str] = None
+    llmApiKey: Optional[str] = None
+    llmDefaultModel: Optional[str] = None
+    llmVerifySsl: Optional[bool] = None
+    llmMaxTokens: Optional[int] = None
+
+
+@router.get("/app", response_model=AppConfigResponse)
+async def get_app_config() -> AppConfigResponse:
+    """Unity / Qt 读取运行时配置（不返回完整 API Key）。"""
+    data = RuntimeConfigStore.load().to_public_dict()
+    return AppConfigResponse(**data)
+
+
+@router.put("/app", response_model=AppConfigResponse)
+async def update_app_config(payload: AppConfigUpdateRequest) -> AppConfigResponse:
+    """Qt 管理台保存学校大模型与 Unity 后端地址，保存后下次对话立即生效。"""
+    updates = payload.model_dump(exclude_none=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="没有可更新的字段")
+    cfg = RuntimeConfigStore.save(updates)
+    return AppConfigResponse(**cfg.to_public_dict())
+
+
+@router.post("/app/test-llm")
+async def test_app_llm_config() -> Dict[str, Any]:
+    """测试当前运行时 LLM 配置（Qt 管理台用）。"""
+    if not RuntimeConfigStore.use_openai_llm():
+        raise HTTPException(status_code=400, detail="未配置 llmBaseUrl")
+    client = RuntimeConfigStore.create_openai_client()
+    ok = await client.health_check()
+    cfg = RuntimeConfigStore.load()
+    return {
+        "llmReachable": ok,
+        "llmBaseUrl": cfg.llm_base_url,
+        "llmModel": cfg.llm_default_model,
+        "summary": "学校大模型可用" if ok else "学校大模型不可达",
     }
 

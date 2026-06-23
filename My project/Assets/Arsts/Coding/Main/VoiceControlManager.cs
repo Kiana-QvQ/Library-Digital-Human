@@ -105,6 +105,15 @@ public class VoiceControlManager : MonoBehaviour
     [Tooltip("保留字段，转发模式下由后端固定模型，此处可不填")]
     [SerializeField] private string backendChatModelKey = "Qwen";
 
+    [Header("连接监控（可选，状态显示在独立 Text 上，勿用对话 resultText）")]
+    [SerializeField] private BackendConnectionMonitor connectionMonitor;
+
+    [Header("场景 UI")]
+    [Tooltip("测试模式 / 静默探测时，不把问答内容写入场景对话区")]
+    [SerializeField] private bool hideChatUiInTestMode = true;
+    [Tooltip("测试模式下跳过 TTS 播报")]
+    [SerializeField] private bool skipTtsInTestMode = true;
+
     [Header("API管理")]
     [Tooltip("统一的API管理器")]
     public APIManager apiManager;
@@ -162,6 +171,7 @@ public class VoiceControlManager : MonoBehaviour
     // TTS播放状态，用于防止TTS音频被识别为用户输入
     private bool isTTSPlaying = false;
     private bool llmFeaturesDisabled = false;
+    private bool suppressSceneChatUi = false;
 
     // 后端会话ID（可选，用于与后端保持上下文）
     private string backendSessionId = null;
@@ -439,6 +449,16 @@ public class VoiceControlManager : MonoBehaviour
             this
         );
 
+        if (connectionMonitor == null)
+        {
+            connectionMonitor = GetComponent<BackendConnectionMonitor>();
+        }
+        if (connectionMonitor == null)
+        {
+            connectionMonitor = gameObject.AddComponent<BackendConnectionMonitor>();
+        }
+        connectionMonitor.SetBackendChatUrl(backendChatUrl);
+
         if (baiduInTimeVoice == null)
             baiduInTimeVoice = GetComponent<BaiduInTimeVoice>();
 
@@ -542,6 +562,21 @@ public class VoiceControlManager : MonoBehaviour
         {
             LogSystemEvent($"动画状态切换: {stateName}");
         };
+    }
+
+    /// <summary>
+    /// 由 BackendConnectionMonitor 在启动时从 /api/config/app 拉取后调用。
+    /// </summary>
+    public void ApplyBackendChatUrl(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return;
+        }
+
+        backendChatUrl = url.Trim();
+        useBackendForChat = true;
+        Debug.Log($"[API Settings] 已应用运行时 backendChatUrl={backendChatUrl}", this);
     }
 
     /// <summary>
@@ -1333,7 +1368,14 @@ public class VoiceControlManager : MonoBehaviour
             LogTTSEvent("播放唤醒提示音");
         }
 
-        DisplayAgentResponse("你好，有什么可以帮你");
+        if (ShouldShowInSceneUi())
+        {
+            DisplayAgentResponse("你好，有什么可以帮你");
+        }
+        else
+        {
+            LogSystemEvent("进入对话模式（测试/静默：不显示问候语）");
+        }
 
         dialogueTimeoutCoroutine = StartCoroutine(WaitUserSpeechCoroutine());
         LogSystemEvent("启动等待用户说话的超时计时");
@@ -1383,8 +1425,9 @@ public class VoiceControlManager : MonoBehaviour
         }
     }
 
-    private void SendMessageToAI(string message)
+    private void SendMessageToAI(string message, bool showInSceneUi = true)
     {
+        suppressSceneChatUi = !showInSceneUi;
         // 验证消息有效性
         if (string.IsNullOrEmpty(message) || string.IsNullOrWhiteSpace(message))
         {
@@ -1396,9 +1439,12 @@ public class VoiceControlManager : MonoBehaviour
         }
 
         // 清理消息内容并显示用户消息
-        ClearMessageContent();
+        if (ShouldShowInSceneUi())
+        {
+            ClearMessageContent();
+            DisplayUserMessage(message);
+        }
         LogUserEvent($"向AI发送消息: {message}");
-        DisplayUserMessage(message);
 
         // 本地占位模式：不出网、不进大模型，仍走 TTS / UI / 动画链路
         if (llmFeaturesDisabled)
@@ -1585,7 +1631,7 @@ public class VoiceControlManager : MonoBehaviour
         SetAnimationState(2);
 
         // 使用TTSManager统一接口
-        if (ttsManager != null && audioSource != null)
+        if (ShouldPlayTts() && ttsManager != null && audioSource != null)
         {
             ttsManager.Speak(response, (clip, errorMsg) =>
             {
@@ -1626,15 +1672,21 @@ public class VoiceControlManager : MonoBehaviour
         }
         else
         {
-            // 如果没有TTS，直接重置状态
-            if (useWakeWordToggle || isInDialogueMode)
+            if (!ShouldPlayTts())
             {
-                StartCoroutine(ResetWakeWordStateAfterDelay(2f)); // 等待2秒后重置
-                LogSystemEvent("未配置TTS，使用默认延迟重置唤醒状态");
+                LogSystemEvent("测试模式：跳过 TTS 播报");
             }
             else
             {
-                // 没有TTS时，立即重置动画状态
+                LogSystemEvent("未配置 TTS，使用默认延迟重置唤醒状态");
+            }
+
+            if (useWakeWordToggle || isInDialogueMode)
+            {
+                StartCoroutine(ResetWakeWordStateAfterDelay(2f));
+            }
+            else
+            {
                 SetAnimationState(0);
             }
         }
@@ -1752,8 +1804,38 @@ public class VoiceControlManager : MonoBehaviour
         }
     }
 
+    private bool ShouldShowInSceneUi()
+    {
+        if (suppressSceneChatUi)
+        {
+            return false;
+        }
+
+        if (enableTestMode && hideChatUiInTestMode)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool ShouldPlayTts()
+    {
+        if (enableTestMode && skipTtsInTestMode)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
     private void ClearMessageContent()
     {
+        if (!ShouldShowInSceneUi())
+        {
+            return;
+        }
+
         if (HasResultText)
         {
             SetResultText(string.Empty);
@@ -1762,6 +1844,12 @@ public class VoiceControlManager : MonoBehaviour
 
     private void DisplayUserMessage(string message)
     {
+        if (!ShouldShowInSceneUi())
+        {
+            LogUserEvent($"用户(仅日志): {message}");
+            return;
+        }
+
         if (HasResultText)
         {
             AppendResultText($"用户: {message}\n");
@@ -1769,6 +1857,12 @@ public class VoiceControlManager : MonoBehaviour
     }
     private void DisplayAgentResponse(string response)
     {
+        if (!ShouldShowInSceneUi())
+        {
+            LogSystemEvent($"AI(仅日志): {response}");
+            return;
+        }
+
         if (HasResultText)
         {
             string cleanedResponse = string.IsNullOrEmpty(response)
@@ -1789,7 +1883,7 @@ public class VoiceControlManager : MonoBehaviour
     /// </summary>
     private void DisplayAgentResponseStreaming(string accumulatedText, bool isFinal = false)
     {
-        if (!HasResultText) return;
+        if (!ShouldShowInSceneUi() || !HasResultText) return;
 
         string current = GetResultText();
         int aiPrefixIndex = current.LastIndexOf("AI: ");
@@ -2100,8 +2194,8 @@ public class VoiceControlManager : MonoBehaviour
         }
         else
         {
-            // 否则直接发送给AI
-            SendMessageToAI(testResult);
+            // 否则直接发送给AI（测试模式：不写场景 UI）
+            SendMessageToAI(testResult, showInSceneUi: false);
         }
 
         // 清空输入框

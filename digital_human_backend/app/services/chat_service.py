@@ -12,7 +12,6 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.brain.llm.ollama_chat import OllamaChat
-from app.brain.llm.openai_chat import OpenAIChat
 from app.brain.llm.exceptions import LLMRequestError
 from app.brain.memory.context_builder import ContextBuilder
 from app.brain.memory.knowledge_retriever import KnowledgeRetriever
@@ -22,6 +21,7 @@ from app.brain.memory.neo4j_doc_ingest import (
     ingest_chat_turn_to_neo4j,
 )
 from app.shared.config import Config
+from app.shared.runtime_config_store import RuntimeConfigStore
 from app.shared.utils import format_response
 from app.services.knowledge_repository import get_kb
 
@@ -146,43 +146,37 @@ class ChatService:
 
     def __init__(self):
         """初始化聊天服务"""
-        self.use_openai = Config.use_openai_llm()
+        self.ollama_chat = None
+        self.memory_store = None
+        self.knowledge_retriever = None
+        self.context_builder = None
+
         if self.use_openai:
-            Config.validate_llm_config()
-            self.openai_chat = OpenAIChat(
-                base_url=Config.LLM_BASE_URL,
-                api_key=Config.LLM_API_KEY,
-                model=Config.LLM_DEFAULT_MODEL,
-                verify_ssl=Config.LLM_VERIFY_SSL,
-                max_tokens=Config.LLM_MAX_TOKENS,
-            )
-            self.ollama_chat = None
+            RuntimeConfigStore.validate_llm_config()
+            cfg = RuntimeConfigStore.load()
             logger.info(
-                "聊天服务初始化完成（OpenAI 纯转发: %s, model=%s，已跳过 RAG/mem0）",
-                Config.LLM_BASE_URL,
-                Config.LLM_DEFAULT_MODEL,
+                "聊天服务初始化（OpenAI 纯转发: %s, model=%s，已跳过 RAG/mem0）",
+                cfg.llm_base_url,
+                cfg.llm_default_model,
             )
         else:
-            self.openai_chat = None
             self.ollama_chat = OllamaChat(
                 base_url=Config.OLLAMA_BASE_URL,
                 model=Config.OLLAMA_DEFAULT_MODEL,
             )
-            logger.info("聊天服务初始化完成（Ollama 本地模型）")
             self.memory_store = Mem0Store()
             self.knowledge_retriever = KnowledgeRetriever()
             self.context_builder = ContextBuilder(
                 memory_manager=self.memory_store,
                 knowledge_retriever=self.knowledge_retriever,
             )
-            logger.info("聊天服务初始化完成（已集成知识检索系统）")
-
-        if self.use_openai:
-            self.memory_store = None
-            self.knowledge_retriever = None
-            self.context_builder = None
+            logger.info("聊天服务初始化完成（Ollama 本地模型 + 知识检索）")
 
         self.sessions: Dict[str, Dict] = {}
+
+    @property
+    def use_openai(self) -> bool:
+        return RuntimeConfigStore.use_openai_llm()
 
     async def _chat_openai_relay(
         self,
@@ -229,9 +223,11 @@ class ChatService:
         )
         llm_messages.append({"role": "user", "content": user_content})
 
-        response = await self.openai_chat.chat_messages(
+        cfg = RuntimeConfigStore.load()
+        client = RuntimeConfigStore.create_openai_client()
+        response = await client.chat_messages(
             llm_messages,
-            model=Config.LLM_DEFAULT_MODEL,
+            model=cfg.llm_default_model,
         )
 
         if (user_id or "").startswith("unity"):
@@ -535,7 +531,8 @@ class ChatService:
     async def get_available_models(self) -> List[str]:
         """获取可用模型列表"""
         if self.use_openai:
-            return await self.openai_chat.get_available_models()
+            cfg = RuntimeConfigStore.load()
+            return [cfg.llm_default_model]
         return await self.ollama_chat.get_available_models()
 
 

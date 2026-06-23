@@ -22,6 +22,7 @@ from app.services.tts_service import tts_router
 from app.services.vision_service import vision_router
 from app.services.websocket_service import websocket_router
 from app.shared.config import Config
+from app.shared.runtime_config_store import RuntimeConfigStore
 from app.shared.utils import setup_logging
 
 setup_logging(Config.LOG_LEVEL, Config.LOG_FILE)
@@ -60,7 +61,62 @@ async def root():
         "version": "1.0.0",
         "docs": "/docs",
         "health": "/health",
+        "diagnostic": "/api/diagnostic",
     }
+
+
+@app.get("/api/diagnostic")
+async def api_diagnostic():
+    """供 Unity 连接状态栏 / Qt 管理台使用的诊断接口。"""
+    try:
+        if RuntimeConfigStore.use_openai_llm():
+            client = RuntimeConfigStore.create_openai_client()
+            cfg = RuntimeConfigStore.load()
+            llm_reachable = await client.health_check()
+            if llm_reachable:
+                summary = "后端与学校大模型均可用"
+            else:
+                summary = "后端正常，但学校大模型不可达（请确认在 172.16.59.x 内网）"
+            return {
+                "backend": "ok",
+                "llm_configured": True,
+                "llm_reachable": llm_reachable,
+                "llm_provider": "openai",
+                "llm_model": cfg.llm_default_model,
+                "llm_base_url": cfg.llm_base_url,
+                "message": summary,
+                "summary": summary,
+            }
+
+        from app.brain.llm.ollama_chat import OllamaChat
+
+        ollama = OllamaChat(
+            base_url=Config.OLLAMA_BASE_URL,
+            model=Config.OLLAMA_DEFAULT_MODEL,
+        )
+        ollama_ok = await ollama.health_check()
+        summary = "Ollama 可用" if ollama_ok else "后端正常，Ollama 不可用"
+        return {
+            "backend": "ok",
+            "llm_configured": False,
+            "llm_reachable": ollama_ok,
+            "llm_provider": "ollama",
+            "llm_model": Config.OLLAMA_DEFAULT_MODEL,
+            "message": summary,
+            "summary": summary,
+        }
+    except Exception as e:
+        logger.error("Diagnostic failed: %s", e)
+        return JSONResponse(
+            status_code=503,
+            content={
+                "backend": "error",
+                "llm_configured": RuntimeConfigStore.use_openai_llm(),
+                "llm_reachable": False,
+                "message": "后端诊断失败",
+                "summary": "后端异常，请查看日志",
+            },
+        )
 
 
 @app.get("/health")
@@ -121,16 +177,17 @@ async def startup_event():
     logger.info("Starting digital human backend...")
     logger.info(f"Service URL: http://{Config.HOST}:{Config.PORT}")
     logger.info(f"API docs: http://{Config.HOST}:{Config.PORT}/docs")
-    if Config.use_openai_llm():
-        Config.validate_llm_config()
-        if not Config.LLM_VERIFY_SSL:
+    if RuntimeConfigStore.use_openai_llm():
+        RuntimeConfigStore.validate_llm_config()
+        cfg = RuntimeConfigStore.load()
+        if not cfg.llm_verify_ssl:
             logger.warning(
                 "LLM_VERIFY_SSL=false：已关闭 SSL 证书校验，仅适用于内网自签证书环境"
             )
         logger.info(
             "LLM provider: OpenAI-compatible gateway (%s, model=%s)",
-            Config.LLM_BASE_URL,
-            Config.LLM_DEFAULT_MODEL,
+            cfg.llm_base_url,
+            cfg.llm_default_model,
         )
     else:
         logger.info(
