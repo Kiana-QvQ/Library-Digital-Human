@@ -173,6 +173,9 @@ public class SceneLoading : MonoBehaviour
 		textExample.text = File.ReadAllLines(Path.Combine(languagesRoot, directories[x], "Hello.txt"))[0];
 		GlobalGame.Language = directories[x];
 		PlayerPrefs.SetString("Language", GlobalGame.Language);
-		GlobalTag.gameOptions.GetComponent<OptionsGame>().ReloadLanguage();
+		if (GlobalTag.gameOptions != null)
+		{
+			GlobalTag.gameOptions.GetComponent<OptionsGame>().ReloadLanguage();
+		}
 	}
 }
