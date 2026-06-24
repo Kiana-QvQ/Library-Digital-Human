@@ -5,6 +5,8 @@
 用法：
   cd digital_human_backend
   python run_qt_admin.py
+
+Windows + Anaconda 若仍失败，可双击 run_qt_admin.bat
 """
 
 from __future__ import annotations
@@ -18,8 +20,12 @@ if str(_root) not in sys.path:
     sys.path.insert(0, str(_root))
 
 
-def _configure_qt_plugin_path() -> None:
-    """Windows/Anaconda 下常见：未设置插件路径导致 qwindows 无法加载。"""
+def _configure_qt_env() -> None:
+    """
+    Windows/Anaconda 下 PySide6 需要：
+    1. QT_PLUGIN_PATH / QT_QPA_PLATFORM_PLUGIN_PATH
+    2. 将 PySide6 目录加入 PATH（qwindows.dll 依赖 Qt6Core.dll 等）
+    """
     try:
         import PySide6
     except ImportError:
@@ -28,12 +34,19 @@ def _configure_qt_plugin_path() -> None:
     pyside_dir = Path(PySide6.__file__).resolve().parent
     plugins = pyside_dir / "plugins"
     platforms = plugins / "platforms"
-    os.environ.setdefault("QT_PLUGIN_PATH", str(plugins))
-    os.environ.setdefault("QT_QPA_PLATFORM_PLUGIN_PATH", str(platforms))
+
+    os.environ["QT_PLUGIN_PATH"] = str(plugins)
+    os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = str(platforms)
     os.environ.setdefault("QT_QPA_PLATFORM", "windows")
 
+    # 关键：必须把 PySide6 根目录加入 PATH，否则 qwindows.dll 加载失败
+    pyside_str = str(pyside_dir)
+    path_entries = os.environ.get("PATH", "").split(os.pathsep)
+    if pyside_str not in path_entries:
+        os.environ["PATH"] = pyside_str + os.pathsep + os.environ.get("PATH", "")
 
-_configure_qt_plugin_path()
+
+_configure_qt_env()
 
 from qt_admin.main_window import run
 
