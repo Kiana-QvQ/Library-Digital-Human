@@ -1,19 +1,26 @@
-# Run after closing Unity Editor. Clears broken Library cache.
-$projectRoot = Split-Path -Parent $PSScriptRoot
-$library = Join-Path $projectRoot "My project\Library"
+# Close Unity Editor before running.
+$repoRoot = $PSScriptRoot
+$library = Join-Path $repoRoot "My project\Library"
+$disabledPrefabs = Join-Path $repoRoot "_disabled_unity_assets\Characters"
 
 if (Get-Process -Name "Unity" -ErrorAction SilentlyContinue) {
-    Write-Host "Close Unity Editor first, then run this script again." -ForegroundColor Red
+    Write-Host "ERROR: Close Unity Editor first, then run again."
     exit 1
 }
 
+Write-Host "Repo: $repoRoot"
+Write-Host "Library: $library"
+Write-Host ""
+
 if (Test-Path $library) {
-    Write-Host "Removing: $library"
+    Write-Host "Removing Library cache..."
     Remove-Item -Recurse -Force $library
-    Write-Host "Library removed. Reopen Unity to reimport (may take a while)." -ForegroundColor Green
+    Write-Host "Done. Reopen Unity (first import may take a while)."
 } else {
-    Write-Host "Library folder not found, nothing to clean."
+    Write-Host "Library not found (already cleaned or wrong path)."
 }
 
 Write-Host ""
-Write-Host "Disabled prefabs: $projectRoot\_disabled_unity_assets\Characters"
+if (Test-Path $disabledPrefabs) {
+    Write-Host "Disabled prefabs: $disabledPrefabs"
+}
