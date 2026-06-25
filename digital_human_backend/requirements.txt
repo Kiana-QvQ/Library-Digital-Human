@@ -1,80 +1,30 @@
 # -*- coding: utf-8 -*-
-# FastAPI 和 Web 框架（保留你的指定版本）
+# 数字人减配后端（Unity → /api/chat → 学校大模型 + Qt 管理台）
+# Python 3.10+  |  pip install -r requirements.txt
+
+# FastAPI / Web
 fastapi==0.116.1
 uvicorn[standard]==0.35.0
 python-multipart==0.0.20
 websockets==15.0.1
 
-# 数据验证（保留你的指定版本）
+# 数据验证
 pydantic==2.12.5
 pydantic-settings==2.10.1
 
-# HTTP 客户端（保留你的指定版本）
+# HTTP
 aiohttp==3.9.5
 requests==2.32.5
-
-# 桌面 GUI（QT 管理界面，保留你的指定版本）
-PySide6==6.7.3
-
-# 环境变量管理（保留你的指定版本）
-python-dotenv==1.1.1
-
-# 数据处理 / 数值计算（保留你的指定版本）
-numpy==1.26.4
-
-# 日志（保留你的指定版本）
-loguru==0.7.2
-
-# 向量数据库和图数据库（mem0ai 1.0.3；neo4j 满足 mem0[graph] 与常见 Neo4j 驱动）
-# 若需 Memgraph+LangChain 集成：另行 pip install langchain-memgraph==0.1.8（会拉长解析，建议单独环境）
-chromadb==0.4.18
-neo4j==5.28.1
-mem0ai[graph]==1.0.3
-
-# 中文分词（保留你的指定版本）
-jieba==0.42.1
-
-# RAG / LangChain（ragas 会拉 langchain-openai 最新 1.x，与 langchain 0.3 栈冲突，须显式钉死 0.3.x）
-ragas==0.4.3
-datasets==4.0.0
-# Fix: scikit-network 在 Windows/Python 3.11 上可能回退到 sdist 并触发 Cython 编译失败
-# 这里显式钉死到已提供 win_amd64 wheel 的版本，避免重复编译。
-scikit-network==0.32.1
-langchain==0.3.28
-langchain-community==0.3.28
-langchain-core==0.3.83
-langchain-text-splitters==0.3.11
-langchain-openai==0.3.25
-langgraph==0.2.59
-langgraph-sdk==0.1.74
-langgraph-checkpoint==2.1.2
-
-# 收敛传递依赖，避免 pip 回溯过深（resolution-too-deep）
-uuid-utils==0.14.1
+httpx==0.28.1
 urllib3==2.3.0
 anyio==4.9.0
-httpx==0.28.1
+
+# Qt 减配管理台
+PySide6==6.7.3
+
+# 环境变量
+python-dotenv==1.1.1
+
+# 收敛传递依赖（避免 pip resolution-too-deep）
 tenacity==9.0.0
 typing-inspect==0.9.0
-
-# 关键修复：mem0ai依赖的sqlalchemy版本（≥2.0.31）
-sqlalchemy==2.0.31  # 刚好满足mem0ai要求，无冲突
-greenlet==3.3.0     # 适配sqlalchemy 2.0.31
-
-# 测试（保留你的指定版本）
-pytest==7.4.0
-pytest-asyncio==0.21.1
-
-# 代码质量 / 开发工具（保留你的指定版本）
-black==24.1.1
-flake8==6.0.0
-isort==5.9.3
-
-
-MATCH p = (c:Character {kb_id: "e35b2832-8f37-4f37-9222-4de300ee217a"})
-          -[r1:SPEAKS]->(d:Dialogue)
-          -[r2:BELONGS_TO]->(ch:Chapter)
-WHERE d.kb_id = "e35b2832-8f37-4f37-9222-4de300ee217a"
-  AND ch.kb_id = "e35b2832-8f37-4f37-9222-4de300ee217a"
-RETURN p
-LIMIT 50;

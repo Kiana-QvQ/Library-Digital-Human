@@ -13,15 +13,16 @@ Unity SceneChat
 ```
 
 - **Unity**：采集输入、展示回复、动画与 TTS
-- **后端**：会话管理、多轮 messages、转发学校 API
-- **Qt 管理台**：改学校 API / Unity 后端地址，无需重打包 Unity
+- **后端**：接收 Unity 对话请求，转发至学校大模型（不托管模型、不用数据库）
+- **Qt 管理台**：改学校 API 地址、百度语音 Key、Unity 后端地址，无需重打包 Unity
 
 ## 仓库结构
 
 ```
 Library Digital Human/
 ├── My project/                 # Unity 工程（Unity Hub 打开此目录）
-├── digital_human_backend/      # FastAPI 后端 + Qt 减配管理台
+├── digital_human_backend/      # FastAPI 转发后端 + Qt 减配管理台
+│   └── requirements.txt          # Python 依赖（仅转发所需）
 ├── app_config.example.json     # 运行时配置示例（复制到 data/）
 └── digital_human_backend/docs/ # API 对接文档
 ```
@@ -61,12 +62,10 @@ HOST=0.0.0.0
 PORT=8173
 
 LLM_BASE_URL=https://172.16.59.220/svc/kaDDxL1y-3/v1
-LLM_API_KEY=lib-llm-2026-secret-key
+LLM_API_KEY=学校提供的Key
 LLM_DEFAULT_MODEL=qwen2.5-7b-lora-library
 LLM_VERIFY_SSL=false
 LLM_MAX_TOKENS=512
-
-DEFAULT_CHAT_KB_ID=
 ```
 
 复制运行时配置（也可稍后在 Qt 里填写）：
@@ -74,6 +73,8 @@ DEFAULT_CHAT_KB_ID=
 ```bash
 cp app_config.example.json data/app_config.json
 ```
+
+（在 `digital_human_backend` 目录下执行。）
 
 启动后端：
 
@@ -194,7 +195,9 @@ SceneAihasto → SceneLoading → SceneMenu → SceneChat
 | `BackendConnectionMonitor` | 连接状态栏、自动拉取运行时配置 |
 | 角色 Animator | 待机 / 思考 / 回答动画 |
 
-当前默认不走：Coze 直连、本地知识库 RAG、mem0、Ollama 对话。
+当前默认不走：Coze 直连、Ollama 本地模型。
+
+**历史遗留代码（已不参与运行）：** `app/brain/memory/`、`Embedding/` 等为早期 RAG/知识库实验，数字人主链路不依赖，后续可删除。
 
 ---
 

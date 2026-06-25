@@ -1,8 +1,6 @@
 """
-API路由层
+API 路由层（各 router 由 app.main 或子模块直接导入）
 API routes layer
 """
 
-from . import chat, training, websocket_manager, tts, stt, config
-
-__all__ = ["chat", "training", "websocket_manager", "tts", "stt", "config"]
+__all__: list[str] = []

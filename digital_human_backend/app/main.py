@@ -1,5 +1,5 @@
 """
-FastAPI application entry point.
+FastAPI application entry point — 数字人减配后端（对话转发 + Qt 配置）
 """
 import sys
 from pathlib import Path
@@ -15,12 +15,6 @@ if str(_root) not in sys.path:
 
 from app.api.config import router as config_router
 from app.services.chat_service import chat_router
-from app.services.document_management_service import document_router
-from app.services.knowledge_base_service import knowledge_router
-from app.services.stt_service import stt_router
-from app.services.tts_service import tts_router
-from app.services.vision_service import vision_router
-from app.services.websocket_service import websocket_router
 from app.shared.config import Config
 from app.shared.runtime_config_store import RuntimeConfigStore
 from app.shared.utils import setup_logging
@@ -30,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Digital Human Backend",
-    description="Backend services for chat, speech, knowledge base, and vision.",
+    description="Unity 数字人减配后端：接收对话并转发至学校 OpenAI 兼容大模型；Qt 管理运行时配置。",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
@@ -45,12 +39,6 @@ app.add_middleware(
 )
 
 app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
-app.include_router(tts_router, prefix="/api/tts", tags=["tts"])
-app.include_router(stt_router, prefix="/api/stt", tags=["stt"])
-app.include_router(websocket_router, prefix="/ws", tags=["websocket"])
-app.include_router(vision_router, prefix="/api/vision", tags=["vision"])
-app.include_router(knowledge_router, prefix="/api/knowledge_bases", tags=["knowledge"])
-app.include_router(document_router, prefix="/api/documents", tags=["documents"])
 app.include_router(config_router, prefix="/api/config", tags=["config"])
 
 
@@ -59,9 +47,21 @@ async def root():
     return {
         "message": "Digital Human Backend API",
         "version": "1.0.0",
+        "mode": "relay",
         "docs": "/docs",
         "health": "/health",
         "diagnostic": "/api/diagnostic",
+    }
+
+
+def _llm_not_configured_response() -> dict:
+    return {
+        "backend": "ok",
+        "llm_configured": False,
+        "llm_reachable": False,
+        "llm_provider": "openai",
+        "message": "未配置学校大模型地址，请在 Qt 管理台或 .env 设置 LLM_BASE_URL",
+        "summary": "后端正常，大模型未配置",
     }
 
 
@@ -69,39 +69,23 @@ async def root():
 async def api_diagnostic():
     """供 Unity 连接状态栏 / Qt 管理台使用的诊断接口。"""
     try:
-        if RuntimeConfigStore.use_openai_llm():
-            client = RuntimeConfigStore.create_openai_client()
-            cfg = RuntimeConfigStore.load()
-            llm_reachable = await client.health_check()
-            if llm_reachable:
-                summary = "后端与学校大模型均可用"
-            else:
-                summary = "后端正常，但学校大模型不可达（请确认在 172.16.59.x 内网）"
-            return {
-                "backend": "ok",
-                "llm_configured": True,
-                "llm_reachable": llm_reachable,
-                "llm_provider": "openai",
-                "llm_model": cfg.llm_default_model,
-                "llm_base_url": cfg.llm_base_url,
-                "message": summary,
-                "summary": summary,
-            }
+        if not RuntimeConfigStore.use_openai_llm():
+            return _llm_not_configured_response()
 
-        from app.brain.llm.ollama_chat import OllamaChat
-
-        ollama = OllamaChat(
-            base_url=Config.OLLAMA_BASE_URL,
-            model=Config.OLLAMA_DEFAULT_MODEL,
-        )
-        ollama_ok = await ollama.health_check()
-        summary = "Ollama 可用" if ollama_ok else "后端正常，Ollama 不可用"
+        client = RuntimeConfigStore.create_openai_client()
+        cfg = RuntimeConfigStore.load()
+        llm_reachable = await client.health_check()
+        if llm_reachable:
+            summary = "后端与学校大模型均可用"
+        else:
+            summary = "后端正常，但学校大模型不可达（请确认在 172.16.59.x 内网）"
         return {
             "backend": "ok",
-            "llm_configured": False,
-            "llm_reachable": ollama_ok,
-            "llm_provider": "ollama",
-            "llm_model": Config.OLLAMA_DEFAULT_MODEL,
+            "llm_configured": True,
+            "llm_reachable": llm_reachable,
+            "llm_provider": "openai",
+            "llm_model": cfg.llm_default_model,
+            "llm_base_url": cfg.llm_base_url,
             "message": summary,
             "summary": summary,
         }
@@ -123,74 +107,61 @@ async def api_diagnostic():
 async def health_check():
     try:
         cfg = RuntimeConfigStore.load()
-        if RuntimeConfigStore.use_openai_llm():
-            client = RuntimeConfigStore.create_openai_client()
-            llm_available = await client.health_check()
+        if not RuntimeConfigStore.use_openai_llm():
             return {
                 "status": "healthy",
                 "llm_provider": "openai",
-                "llm_available": llm_available,
-                "llm_model": cfg.llm_default_model,
+                "llm_available": False,
+                "llm_configured": False,
                 "backend_chat_url": cfg.backend_chat_url(),
-                "services": {
-                    "api": "running",
-                    "llm": "available" if llm_available else "unavailable",
-                },
+                "services": {"api": "running", "llm": "not_configured"},
             }
 
-        from app.brain.llm.ollama_chat import OllamaChat
-
-        ollama_chat = OllamaChat(
-            base_url=Config.OLLAMA_BASE_URL,
-            model=Config.OLLAMA_DEFAULT_MODEL,
-        )
-        ollama_available = await ollama_chat.health_check()
-
+        client = RuntimeConfigStore.create_openai_client()
+        llm_available = await client.health_check()
         return {
             "status": "healthy",
-            "llm_provider": "ollama",
-            "ollama_available": ollama_available,
+            "llm_provider": "openai",
+            "llm_available": llm_available,
+            "llm_configured": True,
+            "llm_model": cfg.llm_default_model,
+            "backend_chat_url": cfg.backend_chat_url(),
             "services": {
                 "api": "running",
-                "ollama": "available" if ollama_available else "unavailable",
+                "llm": "available" if llm_available else "unavailable",
             },
         }
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
+        logger.error("Health check failed: %s", e)
         return JSONResponse(
             status_code=500,
-            content={
-                "status": "unhealthy",
-                "error": str(e),
-            },
+            content={"status": "unhealthy", "error": str(e)},
         )
 
 
 @app.on_event("startup")
 async def startup_event():
-    logger.info("Starting digital human backend...")
-    logger.info(f"Service URL: http://{Config.HOST}:{Config.PORT}")
-    logger.info(f"API docs: http://{Config.HOST}:{Config.PORT}/docs")
+    logger.info("Starting digital human backend (relay mode)...")
+    logger.info("Service URL: http://%s:%s", Config.HOST, Config.PORT)
+    logger.info("API docs: http://%s:%s/docs", Config.HOST, Config.PORT)
     if RuntimeConfigStore.use_openai_llm():
         try:
             RuntimeConfigStore.validate_llm_config()
         except ValueError as exc:
-            logger.warning("OpenAI 配置不完整: %s", exc)
+            logger.warning("大模型配置不完整: %s", exc)
         cfg = RuntimeConfigStore.load()
         if not cfg.llm_verify_ssl:
             logger.warning(
                 "LLM_VERIFY_SSL=false：已关闭 SSL 证书校验，仅适用于内网自签证书环境"
             )
         logger.info(
-            "LLM provider: OpenAI-compatible gateway (%s, model=%s)",
+            "LLM relay: %s (model=%s)",
             cfg.llm_base_url,
             cfg.llm_default_model,
         )
     else:
-        logger.info(
-            "LLM provider: Ollama (%s, model=%s)",
-            Config.OLLAMA_BASE_URL,
-            Config.OLLAMA_DEFAULT_MODEL,
+        logger.warning(
+            "未配置 LLM_BASE_URL；请运行 Qt 管理台或编辑 .env / data/app_config.json"
         )
 
 
