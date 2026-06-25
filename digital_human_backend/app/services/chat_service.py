@@ -213,7 +213,8 @@ class ChatService:
 chat_service = ChatService()
 
 
-@chat_router.post("/", response_model=ChatResponse)
+@chat_router.post("", response_model=ChatResponse)
+@chat_router.post("/", response_model=ChatResponse, include_in_schema=False)
 async def chat_endpoint(request: ChatRequest) -> ChatResponse:
     try:
         message = _validate_message_length(request.message)
