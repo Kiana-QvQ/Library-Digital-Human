@@ -1,89 +1,133 @@
-using Newtonsoft.Json.Linq;
+using System;
 using System.Collections;
-using System.Collections.Generic;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
 
+/// <summary>
+/// Baidu speech API credentials and OAuth token management.
+/// When Qt saves keys to app_config.json, BackendConnectionMonitor applies them at runtime.
+/// If Qt has no keys, Unity uses Inspector / scene defaults.
+/// </summary>
 public class BaiduSettings : MonoBehaviour
 {
-    #region 设置参数
-    /// <summary>
-    /// API Key
-    /// </summary>
-    [Header("填写对应的API Key")] public string m_API_key = string.Empty;
-    /// <summary>
-    /// Secret Key
-    /// </summary>
-    [Header("填写对应的Secret Key")] public string m_Client_secret = string.Empty;
-    /// <summary>
-    /// 是否从服务器获取token
-    /// </summary>
-    [SerializeField] private bool m_GetTokenFromServer = true;
-    /// <summary>
-    /// token值
-    /// </summary>
-    public string m_Token = string.Empty;
-    /// <summary>
-    /// 获取Token的地址
-    /// </summary>
-    [SerializeField] private string m_AuthorizeURL = "https://aip.baidubce.com/oauth/2.0/token";
-    #endregion
+    [Header("Baidu AI credentials")]
+    [Tooltip("API Key from Baidu console")]
+    public string m_API_key;
 
-    private void Awake()
+    [Tooltip("Secret Key from Baidu console")]
+    public string m_Client_secret;
+
+    [Header("Token")]
+    public bool m_GetTokenFromServer = true;
+    public string m_Token;
+    public string m_AuthorizeURL = "https://aip.baidubce.com/oauth/2.0/token";
+
+    private bool _tokenRefreshing;
+
+    public bool HasCredentials =>
+        !string.IsNullOrWhiteSpace(m_API_key) && !string.IsNullOrWhiteSpace(m_Client_secret);
+
+    public void ApplyRuntimeCredentials(string apiKey, string secretKey)
     {
-        if (m_GetTokenFromServer)
+        if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(secretKey))
         {
-            StartCoroutine(GetToken(GetTokenAction));
+            return;
         }
+
+        m_API_key = apiKey.Trim();
+        m_Client_secret = secretKey.Trim();
+        m_Token = null;
     }
 
-    /// <summary>
-    /// 获取到的token
-    /// </summary>
-    /// <param name="_token"></param>
-    private void GetTokenAction(string _token)
+    public static void ApplyRuntimeCredentialsToAll(string apiKey, string secretKey)
     {
-        m_Token = _token;
-    }
-
-    /// <summary>
-    /// 获取token的方法
-    /// </summary>
-    /// <param name="_callback"></param>
-    /// <returns></returns>
-    public IEnumerator GetToken(System.Action<string> _callback)
-    {
-        // 获取token的api地址
-        string _token_url = string.Format(m_AuthorizeURL + "?client_id={0}&client_secret={1}&grant_type=client_credentials", m_API_key, m_Client_secret);
-
-        using (UnityWebRequest request = new UnityWebRequest(_token_url, "GET"))
+        if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(secretKey))
         {
-            request.downloadHandler = (DownloadHandler)new DownloadHandlerBuffer();
-            yield return request.SendWebRequest();
-            if (request.isDone)
+            return;
+        }
+
+        BaiduSettings[] all = FindObjectsOfType<BaiduSettings>(true);
+        foreach (BaiduSettings settings in all)
+        {
+            if (settings != null)
             {
-                string _msg = request.downloadHandler.text;
-                TokenInfo _textback = JsonUtility.FromJson<TokenInfo>(_msg);
-                string _token = _textback.access_token;
-                _callback(_token);
+                settings.ApplyRuntimeCredentials(apiKey, secretKey);
             }
         }
+
+        Debug.Log($"[BaiduSettings] Applied runtime credentials to {all.Length} component(s)");
     }
 
-    /// <summary>
-    /// 刷新token
-    /// </summary>
     public IEnumerator RefreshToken()
     {
-        yield return GetToken(GetTokenAction);
-    }
+        if (!m_GetTokenFromServer)
+        {
+            yield break;
+        }
 
-    /// <summary>
-    /// 返回的token
-    /// </summary>
-    [System.Serializable]
-    public class TokenInfo
-    {
-        public string access_token = string.Empty;
+        if (!HasCredentials)
+        {
+            Debug.LogError("[BaiduSettings] API Key or Secret Key is not configured");
+            yield break;
+        }
+
+        if (!string.IsNullOrEmpty(m_Token))
+        {
+            yield break;
+        }
+
+        if (_tokenRefreshing)
+        {
+            while (_tokenRefreshing)
+            {
+                yield return null;
+            }
+            yield break;
+        }
+
+        _tokenRefreshing = true;
+
+        string baseUrl = string.IsNullOrWhiteSpace(m_AuthorizeURL)
+            ? "https://aip.baidubce.com/oauth/2.0/token"
+            : m_AuthorizeURL.Trim();
+        string url =
+            $"{baseUrl}?grant_type=client_credentials&client_id={UnityWebRequest.EscapeURL(m_API_key)}&client_secret={UnityWebRequest.EscapeURL(m_Client_secret)}";
+
+        using (UnityWebRequest req = UnityWebRequest.Get(url))
+        {
+            req.timeout = 10;
+            yield return req.SendWebRequest();
+
+            if (req.result != UnityWebRequest.Result.Success)
+            {
+                Debug.LogError($"[BaiduSettings] Token request failed: {req.error} {req.downloadHandler?.text}");
+                _tokenRefreshing = false;
+                yield break;
+            }
+
+            try
+            {
+                JObject response = JObject.Parse(req.downloadHandler.text);
+                string token = response["access_token"]?.ToString();
+                if (!string.IsNullOrEmpty(token))
+                {
+                    m_Token = token;
+                }
+                else
+                {
+                    string err = response["error_description"]?.ToString()
+                        ?? response["error"]?.ToString()
+                        ?? req.downloadHandler.text;
+                    Debug.LogError($"[BaiduSettings] Invalid token response: {err}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[BaiduSettings] Failed to parse token: {ex.Message}");
+            }
+        }
+
+        _tokenRefreshing = false;
     }
 }

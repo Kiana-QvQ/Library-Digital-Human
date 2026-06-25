@@ -56,6 +56,7 @@ public class BackendConnectionMonitor : MonoBehaviour
     private string _statusDetail = "尚未检测";
     private bool _chatProbeRunning;
     private string _lastAppliedConfigUrl = "";
+    private string _lastAppliedBaiduKey = "";
     private float _lastConfigFetchTime = -999f;
 
     public ConnectionState State => _state;
@@ -170,6 +171,8 @@ public class BackendConnectionMonitor : MonoBehaviour
                             Debug.Log(log, this);
                             OperationLogger.LogSystem(log);
                         }
+
+                        ApplyBaiduCredentialsIfConfigured(cfg);
                         _lastConfigFetchTime = Time.unscaledTime;
                         yield break;
                     }
@@ -214,6 +217,33 @@ public class BackendConnectionMonitor : MonoBehaviour
         {
             voiceControlManager.ApplyBackendChatUrl(backendChatUrl);
         }
+    }
+
+    private void ApplyBaiduCredentialsIfConfigured(AppConfigResponse cfg)
+    {
+        if (cfg == null || !cfg.baiduConfigured)
+        {
+            return;
+        }
+
+        string apiKey = (cfg.baiduApiKey ?? "").Trim();
+        string secretKey = (cfg.baiduSecretKey ?? "").Trim();
+        if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(secretKey))
+        {
+            return;
+        }
+
+        string fingerprint = apiKey + "|" + secretKey;
+        if (fingerprint == _lastAppliedBaiduKey)
+        {
+            return;
+        }
+
+        BaiduSettings.ApplyRuntimeCredentialsToAll(apiKey, secretKey);
+        _lastAppliedBaiduKey = fingerprint;
+        string log = "[BackendConnectionMonitor] 已应用运行时百度 ASR/TTS 凭证（来自 Qt / app_config.json）";
+        Debug.Log(log, this);
+        OperationLogger.LogSystem(log);
     }
 
     public void StartPolling()
@@ -517,6 +547,9 @@ public class BackendConnectionMonitor : MonoBehaviour
     {
         public string backendChatUrl;
         public string llmDefaultModel;
+        public bool baiduConfigured;
+        public string baiduApiKey;
+        public string baiduSecretKey;
     }
 
     [Serializable]

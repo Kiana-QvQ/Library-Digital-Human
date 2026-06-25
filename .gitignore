@@ -30,6 +30,10 @@ My project/SceneBackups/
 
 # Unity build output
 UnityOutput/
+My project/Output/
+
+# Release artifacts (upload to GitHub Releases manually)
+dist/
 
 # Unity generated
 *.csproj

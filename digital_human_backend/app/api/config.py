@@ -250,6 +250,11 @@ class AppConfigResponse(BaseModel):
     llmVerifySsl: bool
     llmMaxTokens: int
     llmConfigured: bool
+    baiduApiKey: str = ""
+    baiduSecretKey: str = ""
+    baiduApiKeyMasked: str = ""
+    baiduSecretKeyMasked: str = ""
+    baiduConfigured: bool = False
     updatedAt: Optional[str] = None
 
 
@@ -262,12 +267,14 @@ class AppConfigUpdateRequest(BaseModel):
     llmDefaultModel: Optional[str] = None
     llmVerifySsl: Optional[bool] = None
     llmMaxTokens: Optional[int] = None
+    baiduApiKey: Optional[str] = None
+    baiduSecretKey: Optional[str] = None
 
 
 @router.get("/app", response_model=AppConfigResponse)
 async def get_app_config() -> AppConfigResponse:
-    """Unity / Qt 读取运行时配置（不返回完整 API Key）。"""
-    data = RuntimeConfigStore.load().to_public_dict()
+    """Unity / Qt 读取运行时配置；Unity 需要完整百度 Key 时通过 includeSecrets 查询。"""
+    data = RuntimeConfigStore.load().to_public_dict(include_baidu_secrets=True)
     return AppConfigResponse(**data)
 
 
@@ -280,6 +287,40 @@ async def update_app_config(payload: AppConfigUpdateRequest) -> AppConfigRespons
     logger.info("PUT /api/config/app fields=%s", list(updates.keys()))
     cfg = RuntimeConfigStore.save(updates)
     return AppConfigResponse(**cfg.to_public_dict())
+
+
+@router.post("/app/test-baidu")
+async def test_app_baidu_config() -> Dict[str, Any]:
+    """测试当前运行时百度 ASR/TTS 凭证（Qt 管理台用）。"""
+    import requests as req_lib
+
+    cfg = RuntimeConfigStore.load()
+    if not cfg.baidu_configured():
+        raise HTTPException(status_code=400, detail="未配置 baiduApiKey / baiduSecretKey")
+
+    url = "https://aip.baidubce.com/oauth/2.0/token"
+    params = {
+        "grant_type": "client_credentials",
+        "client_id": cfg.baidu_api_key.strip(),
+        "client_secret": cfg.baidu_secret_key.strip(),
+    }
+    try:
+        resp = req_lib.get(url, params=params, timeout=10)
+        data = resp.json()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"请求百度 OAuth 失败: {exc}") from exc
+
+    if resp.status_code != 200 or not data.get("access_token"):
+        err = data.get("error_description") or data.get("error") or resp.text[:200]
+        raise HTTPException(status_code=400, detail=f"百度凭证无效: {err}")
+
+    token = str(data["access_token"])
+    masked = token[:6] + "****" if len(token) > 10 else "****"
+    return {
+        "baiduReachable": True,
+        "accessTokenMasked": masked,
+        "summary": "百度 ASR/TTS 凭证可用",
+    }
 
 
 @router.post("/app/test-llm")

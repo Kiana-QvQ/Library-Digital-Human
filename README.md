@@ -106,21 +106,44 @@ digital_human_backend/run_qt_admin.bat
 | 功能 | 说明 |
 |------|------|
 | 学校大模型 | Base URL、API Key、模型名、SSL、max_tokens |
+| 百度语音 ASR/TTS | API Key、Secret Key（可选；未填时 Unity 用场景内默认值） |
 | Unity 后端地址 | `unityBackendHost` + 端口（端口与 `.env` 的 `PORT` 一致，界面只读） |
 | 测试学校模型 | 直连学校网关 |
+| 测试百度语音 | 向百度 OAuth 验证凭证 |
 | 测试后端对话 | 端到端 `POST /api/chat` |
 
-保存后：**后端下次对话立即生效**；Unity 进入场景时会自动 `GET /api/config/app` 同步 `backendChatUrl`（运行中约每 120 秒刷新一次）。
+保存后：**后端下次对话立即生效**；Unity 进入场景时会自动 `GET /api/config/app` 同步 `backendChatUrl` 与百度 Key（若已在 Qt 配置；运行中约每 120 秒刷新一次）。
 
 日志：`digital_human_backend/logs/qt_admin.log`
 
-> API Key 留空表示不修改已保存的 Key。也可直接编辑 `data/app_config.json`。
+> API Key / Secret 留空表示不修改已保存的值。也可直接编辑 `data/app_config.json`（该文件已在 `.gitignore`，不会提交 GitHub）。
+
+### 百度 ASR / TTS 凭证
+
+语音在 **Unity 客户端**直接调用百度接口；Qt 负责把 Key 写入 `data/app_config.json`，Unity 启动后自动拉取并覆盖场景内 `BaiduSettings`。
+
+**申请步骤（[百度 AI 开放平台](https://ai.baidu.com/)）：**
+
+1. 注册并登录 → **控制台** → **语音技术**
+2. 创建应用，勾选 **语音识别** 与 **语音合成**
+3. 在应用详情页复制 **API Key** 与 **Secret Key**
+4. 在 Qt 管理台「百度语音 ASR / TTS」填写并保存，点击 **测试百度语音** 验证
+5. 重启 Unity 或重新进入 `SceneChat` 使配置生效
+
+**优先级：**
+
+| 来源 | 何时生效 |
+|------|----------|
+| Qt / `app_config.json` 已配置 | Unity 拉取后覆盖场景默认值 |
+| Qt 未配置 | 使用 Unity 场景 / Inspector 中 `BaiduSettings` 默认值 |
+
+> 请勿将真实 Key 提交到 GitHub。示例见 `digital_human_backend/app_config.example.json`（空字段占位）。
 
 ### 3. Unity
 
 1. Unity Hub → Add → 选择 **`My project`**
 2. 版本建议 **Unity 2022.3+**
-3. Inspector 配置百度 ASR/TTS（`BaiduSettings` 等）
+3. Inspector 配置百度 ASR/TTS（`BaiduSettings`；开发阶段可用，**打包后推荐改 Qt**）
 4. `SceneChat` 中 `VoiceControlManager` 保持：
    - `useBackendForChat = true`
    - `backendChatUrl` 可留默认 `http://127.0.0.1:8173/api/chat`（打包后由 Qt / 后端配置覆盖）
@@ -157,7 +180,7 @@ SceneAihasto → SceneLoading → SceneMenu → SceneChat
 1. Unity **打包一次**（`backendChatUrl` 可留默认本机地址）
 2. 现场电脑安装 Python 依赖，配置 `.env` 与 `data/app_config.json`
 3. 常驻运行：`python -m app.main`
-4. 需要改学校 API 或端口映射时，打开 **Qt 管理台** 保存即可，**无需重打包 Unity**
+4. 需要改学校 API 或百度语音 Key 时，打开 **Qt 管理台** 保存即可，**无需重打包 Unity**
 5. 启动 Unity 打包程序，进入对话场景
 
 ---
@@ -222,6 +245,29 @@ git clone git@github.com:Kiana-QvQ/Library-Digital-Human.git
 ```
 
 请勿将 API Key 写入仓库；使用 `.env`、`data/app_config.json` 或 Unity Inspector 本地配置。
+
+---
+
+## 发布版本（Releases）
+
+可运行程序通过 GitHub **Releases** 下载（页面右侧 **Releases**，不是 Packages）。
+
+| 版本 | 内容 |
+|------|------|
+| [v1.0.0](https://github.com/Kiana-QvQ/Library-Digital-Human/releases/tag/v1.0.0) | Windows 独立运行包 + 使用说明 |
+
+**使用者：** 下载 `Library-Digital-Human-v1.0.0-windows.zip` → 解压 → 运行 `My project.exe`，并另起 `digital_human_backend`（见上文「日常使用」）。
+
+**维护者打包新版本：**
+
+```powershell
+# 1. Unity 构建到 My project/Output
+# 2. 打 zip
+powershell -ExecutionPolicy Bypass -File scripts/package_release.ps1
+# 3. GitHub -> Releases -> Draft a new release -> 上传 dist/*.zip
+```
+
+发布说明模板见 `RELEASE_v1.0.0.md`。
 
 ## License
 

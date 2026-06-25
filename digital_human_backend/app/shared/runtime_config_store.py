@@ -30,6 +30,8 @@ class AppRuntimeConfig:
     llm_default_model: str = "qwen2.5-7b-lora-library"
     llm_verify_ssl: bool = False
     llm_max_tokens: int = 512
+    baidu_api_key: str = ""
+    baidu_secret_key: str = ""
     updated_at: Optional[str] = None
 
     def backend_chat_url(self) -> str:
@@ -51,27 +53,46 @@ class AppRuntimeConfig:
         }
         if include_secret:
             data["llmApiKey"] = self.llm_api_key
+            data["baiduApiKey"] = self.baidu_api_key
+            data["baiduSecretKey"] = self.baidu_secret_key
         return data
 
-    def to_public_dict(self) -> Dict[str, Any]:
-        key = self.llm_api_key or ""
-        if key:
-            masked = key[:4] + "****" + key[-4:] if len(key) > 8 else "****"
-        else:
-            masked = ""
-        return {
+    @staticmethod
+    def _mask_secret(value: str) -> str:
+        key = (value or "").strip()
+        if not key:
+            return ""
+        if len(key) > 8:
+            return key[:4] + "****" + key[-4:]
+        return "****"
+
+    def baidu_configured(self) -> bool:
+        return bool(self.baidu_api_key.strip() and self.baidu_secret_key.strip())
+
+    def to_public_dict(self, *, include_baidu_secrets: bool = False) -> Dict[str, Any]:
+        llm_key = self.llm_api_key or ""
+        baidu_key = self.baidu_api_key or ""
+        baidu_secret = self.baidu_secret_key or ""
+        data: Dict[str, Any] = {
             "backendHost": self.backend_host,
             "backendPort": int(Config.PORT),
             "unityBackendHost": self.unity_backend_host,
             "backendChatUrl": self.backend_chat_url(),
             "llmBaseUrl": self.llm_base_url,
-            "llmApiKeyMasked": masked,
+            "llmApiKeyMasked": self._mask_secret(llm_key),
             "llmDefaultModel": self.llm_default_model,
             "llmVerifySsl": self.llm_verify_ssl,
             "llmMaxTokens": self.llm_max_tokens,
             "llmConfigured": bool(self.llm_base_url.strip()),
+            "baiduApiKeyMasked": self._mask_secret(baidu_key),
+            "baiduSecretKeyMasked": self._mask_secret(baidu_secret),
+            "baiduConfigured": self.baidu_configured(),
             "updatedAt": self.updated_at,
         }
+        if include_baidu_secrets and self.baidu_configured():
+            data["baiduApiKey"] = baidu_key.strip()
+            data["baiduSecretKey"] = baidu_secret.strip()
+        return data
 
 
 class RuntimeConfigStore:
@@ -124,6 +145,8 @@ class RuntimeConfigStore:
             ),
             llm_verify_ssl=bool(raw.get("llmVerifySsl", base.llm_verify_ssl)),
             llm_max_tokens=int(raw.get("llmMaxTokens", base.llm_max_tokens)),
+            baidu_api_key=cls._pick_str(raw, "baiduApiKey", base.baidu_api_key),
+            baidu_secret_key=cls._pick_str(raw, "baiduSecretKey", base.baidu_secret_key),
             updated_at=raw.get("updatedAt"),
         )
 
@@ -136,7 +159,13 @@ class RuntimeConfigStore:
         for key, value in updates.items():
             if value is None:
                 continue
-            if key in ("llmApiKey", "llmBaseUrl", "llmDefaultModel") and not str(value).strip():
+            if key in (
+                "llmApiKey",
+                "llmBaseUrl",
+                "llmDefaultModel",
+                "baiduApiKey",
+                "baiduSecretKey",
+            ) and not str(value).strip():
                 continue
             data[key] = value
         data["updatedAt"] = datetime.now().astimezone().isoformat()

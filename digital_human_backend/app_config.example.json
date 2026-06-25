@@ -7,5 +7,7 @@
   "llmDefaultModel": "qwen2.5-7b-lora-library",
   "llmVerifySsl": false,
   "llmMaxTokens": 512,
+  "baiduApiKey": "",
+  "baiduSecretKey": "",
   "updatedAt": null
 }

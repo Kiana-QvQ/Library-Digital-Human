@@ -1,5 +1,5 @@
 """
-减配版 Qt 管理台：仅管理运行时 LLM / 后端地址，不含知识库、Neo4j、mem0。
+减配版 Qt 管理台：管理运行时 LLM、百度语音、Unity 后端地址，不含知识库、Neo4j、mem0。
 """
 
 from __future__ import annotations
@@ -70,7 +70,7 @@ class LiteAdminWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("数字人后端 · 减配管理台")
-        self.resize(760, 600)
+        self.resize(760, 680)
 
         self._log_bridge = QtLogBridge()
         setup_qt_logging(self._log_bridge)
@@ -82,7 +82,8 @@ class LiteAdminWindow(QMainWindow):
 
         hint = QLabel(
             "修改后保存至 data/app_config.json；后端运行中则下次对话立即生效。"
-            "Unity 打包版启动时会自动拉取 backendChatUrl。"
+            "Unity 打包版启动时会自动拉取 backendChatUrl 与百度语音 Key（若已在 Qt 配置）。"
+            "未在 Qt 填写百度 Key 时，Unity 使用场景内 BaiduSettings 默认值。"
             "服务监听端口由 .env 的 PORT 决定，下方端口只读。"
         )
         hint.setWordWrap(True)
@@ -121,15 +122,31 @@ class LiteAdminWindow(QMainWindow):
         llm_form.addRow("max_tokens", self.llm_max_tokens)
         layout.addWidget(llm_box)
 
+        baidu_box = QGroupBox("百度语音 ASR / TTS")
+        baidu_form = QFormLayout(baidu_box)
+        self.baidu_api_key = QLineEdit()
+        self.baidu_api_key.setPlaceholderText("留空表示不修改；未配置时 Unity 用场景内默认值")
+        self.baidu_secret_key = QLineEdit()
+        self.baidu_secret_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self.baidu_secret_key.setPlaceholderText("留空表示不修改已保存的 Secret")
+        self.baidu_status = QLabel("未配置（Unity 使用场景内 BaiduSettings）")
+        self.baidu_status.setWordWrap(True)
+        baidu_form.addRow("API Key", self.baidu_api_key)
+        baidu_form.addRow("Secret Key", self.baidu_secret_key)
+        baidu_form.addRow("状态", self.baidu_status)
+        layout.addWidget(baidu_box)
+
         btn_row = QHBoxLayout()
         self.btn_reload = QPushButton("重新加载")
         self.btn_save = QPushButton("保存配置")
         self.btn_test_llm = QPushButton("测试学校模型")
+        self.btn_test_baidu = QPushButton("测试百度语音")
         self.btn_test_chat = QPushButton("测试后端对话")
         self.btn_clear_log = QPushButton("清空日志")
         btn_row.addWidget(self.btn_reload)
         btn_row.addWidget(self.btn_save)
         btn_row.addWidget(self.btn_test_llm)
+        btn_row.addWidget(self.btn_test_baidu)
         btn_row.addWidget(self.btn_test_chat)
         btn_row.addWidget(self.btn_clear_log)
         layout.addLayout(btn_row)
@@ -144,6 +161,7 @@ class LiteAdminWindow(QMainWindow):
         self.btn_reload.clicked.connect(self.load_from_store)
         self.btn_save.clicked.connect(self.save_config)
         self.btn_test_llm.clicked.connect(self.test_llm)
+        self.btn_test_baidu.clicked.connect(self.test_baidu)
         self.btn_test_chat.clicked.connect(self.test_backend_chat)
         self.btn_clear_log.clicked.connect(self.log.clear)
         self.unity_host.textChanged.connect(self._refresh_chat_url_preview)
@@ -158,6 +176,7 @@ class LiteAdminWindow(QMainWindow):
             self.btn_reload,
             self.btn_save,
             self.btn_test_llm,
+            self.btn_test_baidu,
             self.btn_test_chat,
         ):
             btn.setEnabled(not busy)
@@ -188,15 +207,27 @@ class LiteAdminWindow(QMainWindow):
         self.llm_model.setText(cfg.llm_default_model)
         self.llm_verify_ssl.setChecked(cfg.llm_verify_ssl)
         self.llm_max_tokens.setValue(int(cfg.llm_max_tokens))
+        self.baidu_api_key.clear()
+        self.baidu_secret_key.clear()
         self._refresh_chat_url_preview()
-        masked = cfg.to_public_dict().get("llmApiKeyMasked", "")
+        public = cfg.to_public_dict()
+        masked = public.get("llmApiKeyMasked", "")
+        baidu_key_masked = public.get("baiduApiKeyMasked", "")
+        baidu_secret_masked = public.get("baiduSecretKeyMasked", "")
+        if cfg.baidu_configured():
+            self.baidu_status.setText(
+                f"已配置（Key={baidu_key_masked}, Secret={baidu_secret_masked}）"
+            )
+        else:
+            self.baidu_status.setText("未配置（Unity 使用场景内 BaiduSettings）")
         logger.info(
-            "已加载配置 unity=%s port=%s llm=%s model=%s key=%s",
+            "已加载配置 unity=%s port=%s llm=%s model=%s key=%s baidu=%s",
             cfg.unity_backend_host,
             Config.PORT,
             cfg.llm_base_url or "(未设置)",
             cfg.llm_default_model,
             masked or "未设置",
+            "已配置" if cfg.baidu_configured() else "未配置",
         )
 
     def _collect_updates(self) -> Dict[str, Any]:
@@ -211,6 +242,12 @@ class LiteAdminWindow(QMainWindow):
         key = self.llm_api_key.text().strip()
         if key:
             updates["llmApiKey"] = key
+        baidu_key = self.baidu_api_key.text().strip()
+        if baidu_key:
+            updates["baiduApiKey"] = baidu_key
+        baidu_secret = self.baidu_secret_key.text().strip()
+        if baidu_secret:
+            updates["baiduSecretKey"] = baidu_secret
         return updates
 
     def _persist_updates(self, action: str) -> bool:
@@ -223,14 +260,26 @@ class LiteAdminWindow(QMainWindow):
             updates = self._collect_updates()
             cfg = RuntimeConfigStore.save(updates)
             self.llm_api_key.clear()
+            self.baidu_api_key.clear()
+            self.baidu_secret_key.clear()
             logger.info(
-                "%s 成功 chat_url=%s llm=%s model=%s",
+                "%s 成功 chat_url=%s llm=%s model=%s baidu=%s",
                 action,
                 cfg.backend_chat_url(),
                 cfg.llm_base_url,
                 cfg.llm_default_model,
+                "已配置" if cfg.baidu_configured() else "未配置",
             )
             self._notify_running_backend(updates)
+            public = cfg.to_public_dict()
+            if cfg.baidu_configured():
+                self.baidu_status.setText(
+                    "已配置（Key="
+                    f"{public.get('baiduApiKeyMasked', '')}, "
+                    f"Secret={public.get('baiduSecretKeyMasked', '')}）"
+                )
+            else:
+                self.baidu_status.setText("未配置（Unity 使用场景内 BaiduSettings）")
             return True
         except Exception as exc:  # noqa: BLE001
             logger.exception("%s 失败: %s", action, exc)
@@ -286,6 +335,62 @@ class LiteAdminWindow(QMainWindow):
     def _on_llm_test_err(self, err: str) -> None:
         logger.error("学校大模型测试异常: %s", err)
         QMessageBox.critical(self, "测试失败", err)
+
+    def test_baidu(self) -> None:
+        baidu_key = self.baidu_api_key.text().strip()
+        baidu_secret = self.baidu_secret_key.text().strip()
+        cfg = RuntimeConfigStore.load()
+        if not baidu_key and not cfg.baidu_api_key.strip():
+            QMessageBox.warning(self, "配置不完整", "请填写百度 API Key")
+            return
+        if not baidu_secret and not cfg.baidu_secret_key.strip():
+            QMessageBox.warning(self, "配置不完整", "请填写百度 Secret Key")
+            return
+
+        if baidu_key or baidu_secret:
+            if not self._persist_updates("百度测试前保存"):
+                return
+            cfg = RuntimeConfigStore.load()
+
+        self._set_busy(True)
+        logger.info("开始测试百度 ASR/TTS 凭证…")
+
+        def _test():
+            url = "https://aip.baidubce.com/oauth/2.0/token"
+            params = {
+                "grant_type": "client_credentials",
+                "client_id": cfg.baidu_api_key.strip(),
+                "client_secret": cfg.baidu_secret_key.strip(),
+            }
+            resp = requests.get(url, params=params, timeout=10)
+            data = resp.json()
+            if resp.status_code != 200 or not data.get("access_token"):
+                err = data.get("error_description") or data.get("error") or resp.text[:200]
+                raise RuntimeError(str(err))
+            token = str(data["access_token"])
+            masked = token[:6] + "****" if len(token) > 10 else "****"
+            return {"summary": "百度 ASR/TTS 凭证可用", "accessTokenMasked": masked}
+
+        worker = _HttpWorker(_test)
+        worker.finished_ok.connect(self._on_baidu_test_ok)
+        worker.finished_err.connect(self._on_baidu_test_err)
+        worker.finished.connect(lambda: self._set_busy(False))
+        worker.start()
+        self._workers.append(worker)
+
+    def _on_baidu_test_ok(self, data: dict) -> None:
+        summary = data.get("summary") or "百度凭证可用"
+        token = data.get("accessTokenMasked") or ""
+        logger.info("百度语音测试成功: %s token=%s", summary, token)
+        QMessageBox.information(self, "测试成功", summary)
+
+    def _on_baidu_test_err(self, err: str) -> None:
+        logger.error("百度语音测试失败: %s", err)
+        QMessageBox.warning(
+            self,
+            "测试失败",
+            f"{err}\n\n请确认已在百度 AI 开放平台创建语音应用，并填写正确的 API Key / Secret Key。",
+        )
 
     def test_backend_chat(self) -> None:
         if not self._persist_updates("对话测试前保存"):
